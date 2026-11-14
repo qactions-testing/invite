@@ -44,7 +44,7 @@ def room_cana():
         return any(((adiff(a, wa) * R) ** 2 + (z - wz) ** 2) < 0.35 ** 2 for wa, wz in WIN)
 
     zs = [i * 0.16 for i in range(int(H / 0.16) + 1)] + [H + 0.3, H + 0.6, H + 0.9]
-    objs = [shell('pared', rfn, zs, 96, carved, hole, uv=1.1)]
+    objs = [shell('pared', rfn, zs, 96, carved, hole, uv=1.1, smooth=False)]
     objs.append(disc('piso', R + 0.4, (0, 0, 0), planks, 48, uv=1.3))
     objs.append(disc('alfombra', 1.55, (0.25, 0.55, 0.006), mat_color('alfombra', (0.22, 0.04, 0.035), 0.95), 36))
 

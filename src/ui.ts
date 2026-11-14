@@ -121,44 +121,54 @@ export function drawMap(c: CanvasRenderingContext2D, W: number, H: number, geo: 
     else { c.strokeStyle = 'rgba(90,70,40,0.35)'; c.lineWidth = 0.8; c.stroke(); }
   }
   // cobertura de bosque y cordillera
-  for (let z = b.minZ; z < b.maxZ; z += 4) for (let x = b.minX; x < b.maxX; x += 4) {
+  const step = 3;
+  for (let z = b.minZ; z < b.maxZ; z += step) for (let x = b.minX; x < b.maxX; x += step) {
     if (geo.sample(geo.sdf, x, z) < 1) continue;
     const d = geo.biome(x, z).density;
+    const x0 = Math.round(X(x - step / 2)), z0 = Math.round(Z(z - step / 2));
     c.fillStyle = `rgba(52,104,48,${Math.min(0.55, d * 0.36)})`;
-    c.fillRect(X(x) - 2 * s, Z(z) - 2 * s, 4 * s + 0.5, 4 * s + 0.5);
-    if (geo.sample(geo.andes, x, z) < 3.5 && (Math.round(z / 4) % 2 === 0)) {
-      c.strokeStyle = 'rgba(80,60,40,0.75)'; c.lineWidth = 1.1;
-      c.beginPath(); c.moveTo(X(x) - 4, Z(z) + 3); c.lineTo(X(x), Z(z) - 4); c.lineTo(X(x) + 4, Z(z) + 3); c.stroke();
-    }
+    c.fillRect(x0, z0, Math.round(X(x + step / 2)) - x0, Math.round(Z(z + step / 2)) - z0);
+  }
+  c.strokeStyle = 'rgba(80,60,40,0.8)'; c.lineWidth = 1.8;
+  for (let z = b.minZ; z < b.maxZ; z += 7) for (let x = b.minX; x < b.maxX; x += 2) {
+    if (geo.sample(geo.sdf, x, z) < 1 || geo.sample(geo.andes, x, z) > 1.2) continue;
+    c.beginPath(); c.moveTo(X(x) - 8, Z(z) + 6); c.lineTo(X(x), Z(z) - 8); c.lineTo(X(x) + 8, Z(z) + 6); c.stroke();
+    break;
   }
   // ríos
   c.lineCap = 'round'; c.lineJoin = 'round';
   for (const r of geo.rivers) {
-    c.strokeStyle = '#3f86a8'; c.lineWidth = r.main ? 4 : 2;
+    c.strokeStyle = '#3f86a8'; c.lineWidth = r.main ? 7 : 3.5;
     c.beginPath();
     for (let i = 0; i < r.n; i++) i ? c.lineTo(X(r.pts[i * 2]), Z(r.pts[i * 2 + 1])) : c.moveTo(X(r.pts[i * 2]), Z(r.pts[i * 2 + 1]));
     c.stroke();
-    const m = Math.floor(r.n * 0.45);
-    c.fillStyle = '#2a5f7a'; c.font = 'italic 12px Georgia, serif'; c.textAlign = 'left';
-    c.fillText(r.name, X(r.pts[m * 2]) + 7, Z(r.pts[m * 2 + 1]) - 4);
+  }
+  for (const r of geo.rivers) {
+    const m = Math.floor(r.n * (r.main ? 0.72 : 0.3));
+    c.font = 'italic 20px Georgia, serif'; c.textAlign = 'left'; c.lineWidth = 4; c.strokeStyle = 'rgba(247,237,214,0.8)';
+    c.strokeText(r.name, X(r.pts[m * 2]) + 10, Z(r.pts[m * 2 + 1]) + 22); c.fillStyle = '#2a5f7a'; c.fillText(r.name, X(r.pts[m * 2]) + 10, Z(r.pts[m * 2 + 1]) + 22);
   }
   // lugares
   c.textAlign = 'center';
   for (const p of places) {
     const x = X(p.x), z = Z(p.z);
-    c.fillStyle = p.kind === 'sala' ? '#8a2f1c' : '#2f5d2a';
-    c.beginPath(); c.moveTo(x, z - 7); c.lineTo(x + 6, z); c.lineTo(x, z + 7); c.lineTo(x - 6, z); c.closePath(); c.fill();
-    c.font = '600 14px Georgia, serif'; c.lineWidth = 3.5; c.strokeStyle = 'rgba(247,237,214,0.9)';
-    c.strokeText(p.name, x, z - 12); c.fillStyle = '#3a2a1a'; c.fillText(p.name, x, z - 12);
+    c.fillStyle = p.kind === 'sala' ? '#8a2f1c' : '#2f5d2a'; c.strokeStyle = '#fff7e0'; c.lineWidth = 2.5;
+    c.beginPath(); c.moveTo(x, z - 13); c.lineTo(x + 11, z); c.lineTo(x, z + 13); c.lineTo(x - 11, z); c.closePath(); c.fill(); c.stroke();
+    c.font = '600 25px Georgia, serif';
+    const half = c.measureText(p.name).width / 2 + 8, tx = Math.min(W - half, Math.max(half, x));
+    c.lineWidth = 6; c.strokeStyle = 'rgba(247,237,214,0.92)';
+    c.strokeText(p.name, tx, z - 20); c.fillStyle = '#3a2a1a'; c.fillText(p.name, tx, z - 20);
   }
   // jugador
-  c.save(); c.translate(X(px), Z(pz)); c.rotate(-yaw);
-  c.fillStyle = '#c0392b'; c.strokeStyle = '#fff'; c.lineWidth = 2;
-  c.beginPath(); c.moveTo(0, -11); c.lineTo(7, 8); c.lineTo(0, 4); c.lineTo(-7, 8); c.closePath(); c.fill(); c.stroke();
+  c.save(); c.translate(X(px), Z(pz));
+  c.fillStyle = 'rgba(192,57,43,0.22)'; c.beginPath(); c.arc(0, 0, 26, 0, Math.PI * 2); c.fill();
+  c.rotate(-yaw);
+  c.fillStyle = '#c0392b'; c.strokeStyle = '#fff'; c.lineWidth = 3;
+  c.beginPath(); c.moveTo(0, -20); c.lineTo(13, 14); c.lineTo(0, 7); c.lineTo(-13, 14); c.closePath(); c.fill(); c.stroke();
   c.restore();
   // norte y escala
-  c.fillStyle = '#3a2a1a'; c.font = '600 15px Georgia, serif'; c.textAlign = 'center';
-  c.fillText('N', W - 34, 34); c.beginPath(); c.moveTo(W - 34, 40); c.lineTo(W - 29, 54); c.lineTo(W - 39, 54); c.closePath(); c.fill();
-  c.strokeStyle = '#3a2a1a'; c.lineWidth = 2; c.beginPath(); c.moveTo(24, H - 24); c.lineTo(24 + 100 * s, H - 24); c.stroke();
-  c.textAlign = 'left'; c.font = '12px Georgia, serif'; c.fillText('100 m (100 s caminando)', 24, H - 30);
+  c.fillStyle = '#3a2a1a'; c.font = '600 26px Georgia, serif'; c.textAlign = 'center';
+  c.fillText('N', W - 44, 46); c.beginPath(); c.moveTo(W - 44, 54); c.lineTo(W - 35, 80); c.lineTo(W - 53, 80); c.closePath(); c.fill();
+  c.strokeStyle = '#3a2a1a'; c.lineWidth = 3; c.beginPath(); c.moveTo(28, H - 30); c.lineTo(28 + 100 * s, H - 30); c.stroke();
+  c.textAlign = 'left'; c.font = '20px Georgia, serif'; c.fillText('100 m = 100 s a pie', 28, H - 42);
 }

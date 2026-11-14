@@ -1,0 +1,9 @@
+[
+ {
+  "id": "mapa",
+  "title": "Mapa del bosque (tecla M)",
+  "file": "mapa.png",
+  "mean": 150.3,
+  "std": 52.3
+ }
+]

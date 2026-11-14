@@ -46,8 +46,5 @@
  },
  "clay_roof_tiles_02": {
   "diffuse": "assets/textures/clay_roof_tiles_02.webp"
- },
- "thatch_roof_angled": {
-  "diffuse": "assets/textures/thatch_roof_angled.webp"
  }
 }

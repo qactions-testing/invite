@@ -241,7 +241,7 @@ def wall(name, p0, u, v, nu, nv, mat, hole=None, uv=1.0, flip=False):
     return _finish(name, bm, mat, uv=uv)
 
 
-def shell(name, rfn, zs, segs, mat, hole=None, uv=1.0, inward=True):
+def shell(name, rfn, zs, segs, mat, hole=None, uv=1.0, inward=True, smooth=True):
     """Pared de revolución irregular: radio = rfn(ángulo, z). hole(ángulo, z) → True = abertura."""
     bm = bmesh.new()
     rings = [[bm.verts.new((rfn(TAU * s / segs, z) * math.cos(TAU * s / segs), rfn(TAU * s / segs, z) * math.sin(TAU * s / segs), z)) for s in range(segs)] for z in zs]
@@ -251,7 +251,9 @@ def shell(name, rfn, zs, segs, mat, hole=None, uv=1.0, inward=True):
                 continue
             q = (rings[k][s], rings[k][(s + 1) % segs], rings[k + 1][(s + 1) % segs], rings[k + 1][s])
             bm.faces.new(tuple(reversed(q)) if inward else q)
-    return _finish(name, bm, mat, smooth=True, uv=uv, cyl_uv=True)
+    # las caras se triangulan acá para que Cycles y el GLB usen la misma diagonal
+    bmesh.ops.triangulate(bm, faces=bm.faces)
+    return _finish(name, bm, mat, smooth=smooth, uv=uv, cyl_uv=True)
 
 
 def adiff(a, b):

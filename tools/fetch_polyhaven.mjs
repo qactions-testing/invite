@@ -24,7 +24,6 @@ export const TEXTURES = [
   // salas y construcciones
   'plank_flooring_02', 'plastered_wall_04', 'old_stone_wall', 'gingham_check',
   'wood_table_001', 'brown_planks_09', 'cobblestone_floor_04', 'clay_roof_tiles_02',
-  'thatch_roof_angled',
 ];
 
 // curl respeta el proxy y el CA del entorno; fetch() de Node no.

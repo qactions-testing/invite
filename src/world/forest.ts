@@ -45,7 +45,7 @@ export class ForestScene implements GameScene {
       fetch('assets/sky/sky.json').then((r) => r.json() as Promise<SkyData>),
       new THREE.TextureLoader().loadAsync('assets/sky/sky.jpg'),
       lib.ready(['forest_leaves_02', 'leafy_grass', 'cliff_side', 'coast_sand_01', 'mossy_rock', 'bark_brown_02', 'pine_bark', 'palm_tree_bark',
-        'brown_planks_09', 'plastered_wall_04', 'clay_roof_tiles_02', 'old_stone_wall', 'thatch_roof_angled']),
+        'brown_planks_09', 'plastered_wall_04', 'clay_roof_tiles_02', 'old_stone_wall']),
     ]);
     progress(0.3, 'Levantando la cordillera…');
     await tick();
