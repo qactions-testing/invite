@@ -28,19 +28,21 @@ def room_cana():
     cream = mat_color('loza', (0.85, 0.8, 0.68), 0.5)
     brass = mat_color('bronce', (0.7, 0.5, 0.2), 0.35, 0.9)
 
+    A_DOOR = -math.pi / 2
+
     def rfn(a, z):
-        base = R + 0.16 * math.sin(5 * a + 1) + 0.09 * math.sin(9 * a + 2 * z) + 0.05 * math.sin(17 * a - 3 * z)
+        # las ondulaciones de la corteza se apagan alrededor de la puerta para que no la tapen
+        k = 1 - math.exp(-((adiff(a, A_DOOR) / 0.42) ** 4))
+        base = R + k * (0.16 * math.sin(5 * a + 1) + 0.09 * math.sin(9 * a + 2 * z) + 0.05 * math.sin(17 * a - 3 * z))
         if z <= H:
             return base * (1 - 0.3 * (z / H) ** 2.5)
         k = min(1.0, (z - H) / 0.9)
         return base * 0.7 * (1 - k) + 0.6 * k
 
-    A_DOOR, WIN = -math.pi / 2, [(0.55, 2.25), (2.65, 2.35)]
+    WIN = [(0.55, 2.25), (2.65, 2.35)]
 
     def hole(a, z):
-        da = abs(adiff(a, A_DOOR))
-        if da < 0.23 and z < 2.2 - 0.4 * (da / 0.23) ** 2:
-            return True
+        # la puerta va por delante de la pared (sin hueco: el recorte en grilla dejaba un borde escalonado)
         return any(((adiff(a, wa) * R) ** 2 + (z - wz) ** 2) < 0.35 ** 2 for wa, wz in WIN)
 
     zs = [i * 0.16 for i in range(int(H / 0.16) + 1)] + [H + 0.3, H + 0.6, H + 0.9]
@@ -49,15 +51,16 @@ def room_cana():
     objs.append(disc('alfombra', 1.55, (0.25, 0.55, 0.006), mat_color('alfombra', (0.22, 0.04, 0.035), 0.95), 36))
 
     # puerta de salida (arco)
-    rd = rfn(A_DOOR, 1.0)
-    d = [box('p1', (1.24, 0.09, 1.75), (0, -rd + 0.06, 0.875), door_m, uv=0.9),
+    # el tronco se cierra hacia arriba: la puerta se alinea con la pared a la altura del arco
+    rd = rfn(A_DOOR, 2.4)
+    d = [box('p1', (1.24, 0.09, 1.75), (0, -rd + 0.1, 0.875), door_m, uv=0.9),
          # el arco va 2 cm detrás de la hoja: si quedan coplanares, el horneado las oscurece
-         cyl('p2', 0.62, 0.62, 0.07, (0, -rd + 0.04, 1.75), door_m, 28, rot=(math.pi / 2, 0, 0), uv=0.9),
-         sphere('p3', 0.05, (0.42, -rd + 0.14, 1.0), brass)]
+         cyl('p2', 0.62, 0.62, 0.07, (0, -rd + 0.08, 1.75), door_m, 28, rot=(math.pi / 2, 0, 0), uv=0.9),
+         sphere('p3', 0.05, (0.42, -rd + 0.18, 1.0), brass)]
     objs.append(join('I_puerta', d))
-    objs.append(torus('marco', 0.68, 0.085, (0, -rd + 0.08, 1.75), dark, rot=(math.pi / 2, 0, 0), arc=math.pi))
+    objs.append(torus('marco', 0.68, 0.085, (0, -rd + 0.1, 1.75), dark, rot=(math.pi / 2, 0, 0), arc=math.pi))
     for s in (-1, 1):
-        objs.append(box(f'jamba{s}', (0.15, 0.2, 1.8), (s * 0.69, -rd + 0.08, 0.9), dark))
+        objs.append(box(f'jamba{s}', (0.15, 0.42, 1.8), (s * 0.69, -rd - 0.06, 0.9), dark))
 
     # ventanas de nudo + claraboya, con el resplandor del atardecer detrás
     for i, (wa, wz) in enumerate(WIN):

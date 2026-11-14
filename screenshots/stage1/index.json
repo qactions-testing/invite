@@ -1,9 +1,9 @@
 [
  {
-  "id": "fogata",
-  "title": "Fogata de los Novios",
-  "file": "fogata.png",
-  "mean": 139.7,
-  "std": 53.8
+  "id": "cana",
+  "title": "Corazón de la Caña Fístula",
+  "file": "cana.png",
+  "mean": 53,
+  "std": 41.6
  }
 ]
