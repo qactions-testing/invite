@@ -1,0 +1,58 @@
+[
+ {
+  "id": "campamento",
+  "title": "Campamento de los Viajeros",
+  "file": "campamento.jpg",
+  "mean": 115.2,
+  "std": 49.9
+ },
+ {
+  "id": "remeras",
+  "title": "Tendedero: remera amarilla y remera de la centaura cebra",
+  "file": "remeras.jpg",
+  "mean": 104.5,
+  "std": 49.2
+ },
+ {
+  "id": "mazmorra-1-bajada",
+  "title": "Mazmorra 1/5 · Bajada de la trampilla",
+  "file": "mazmorra-1-bajada.jpg",
+  "mean": 18,
+  "std": 20.1
+ },
+ {
+  "id": "mazmorra-2-corredor",
+  "title": "Mazmorra 2/5 · Corredor de las antorchas",
+  "file": "mazmorra-2-corredor.jpg",
+  "mean": 53.5,
+  "std": 28.2
+ },
+ {
+  "id": "mazmorra-3-puerta",
+  "title": "Mazmorra 3/5 · Sala de la puerta (cerrada)",
+  "file": "mazmorra-3-puerta.jpg",
+  "mean": 26.8,
+  "std": 28.1
+ },
+ {
+  "id": "mazmorra-4-cripta",
+  "title": "Mazmorra 4/5 · Cripta de la llave",
+  "file": "mazmorra-4-cripta.jpg",
+  "mean": 19.9,
+  "std": 25
+ },
+ {
+  "id": "mazmorra-5-tesoro",
+  "title": "Mazmorra 5/5 · Sala del tesoro: \"You found it!\"",
+  "file": "mazmorra-5-tesoro.jpg",
+  "mean": 52.9,
+  "std": 41.7
+ },
+ {
+  "id": "invitacion",
+  "title": "La invitación con su sello de lacre",
+  "file": "invitacion.jpg",
+  "mean": 50.9,
+  "std": 33.5
+ }
+]

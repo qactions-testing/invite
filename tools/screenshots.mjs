@@ -1,5 +1,5 @@
 // Capturas de los seis lugares de la etapa 1 (+ mapa y vista general del bosque).
-// Uso: npm run build && npm run screenshots   → screenshots/stage1/*.png
+// Uso: npm run build && npm run screenshots   → screenshots/stage1/*.jpg (con --stage2: screenshots/stage2)
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,20 +17,33 @@ export const SHOTS = [
   { id: 'mapa', title: 'Mapa del bosque (tecla M)', js: `I.teleport({ x: I.state().places[1].x - 6, z: I.state().places[1].z - 10, yaw: 0.6, scene: 'bosque' }); I.step(0.2);`, key: 'm' },
 ];
 
-export async function capture({ baseUrl, outDir, quality = 'high', width = 1280, height = 720, dpr = 2, only = null }) {
+/** Etapa 2: campamento, los cinco cuartos de la mazmorra y la invitación. */
+export const SHOTS2 = [
+  { id: 'campamento', title: 'Campamento de los Viajeros', js: `I.clearCard(); I.teleport('campamento', 7.5); I.look(I.state().yaw, -0.05); I.step(1);` },
+  { id: 'remeras', title: 'Tendedero: remera amarilla y remera de la centaura cebra', js: `const a = I.posOf('remera-amarilla'), b = I.posOf('remera-centaura'), mx = (a[0] + b[0]) / 2, mz = (a[2] + b[2]) / 2; let nx = -(b[2] - a[2]), nz = b[0] - a[0]; const l = Math.hypot(nx, nz); const cx = mx + nx / l * 2.0, cz = mz + nz / l * 2.0, yaw = Math.atan2(-(mx - cx), -(mz - cz)); I.teleport({ x: cx, z: cz, yaw, scene: 'bosque' }); I.look(yaw, -0.13); I.step(0.6);` },
+  { id: 'mazmorra-1-bajada', title: 'Mazmorra 1/5 · Bajada de la trampilla', js: `I.teleport({ scene: 'mazmorra', x: 4.4, z: 26.2, yaw: -2.0 }); I.look(-2.0, 0.03); I.step(0.6);` },
+  { id: 'mazmorra-2-corredor', title: 'Mazmorra 2/5 · Corredor de las antorchas', js: `I.teleport({ scene: 'mazmorra', x: 6, z: 24.4, yaw: 0 }); I.look(0, 0.04); I.step(0.6);` },
+  { id: 'mazmorra-3-puerta', title: 'Mazmorra 3/5 · Sala de la puerta (cerrada)', js: `I.teleport({ scene: 'mazmorra', x: 6.6, z: 11.3, yaw: 0.55 }); I.look(0.55, 0.02); I.step(0.6);` },
+  { id: 'mazmorra-4-cripta', title: 'Mazmorra 4/5 · Cripta de la llave', js: `I.teleport({ scene: 'mazmorra', x: 12.6, z: 7.2, yaw: -0.36 }); I.look(-0.36, -0.08); I.step(0.6);` },
+  { id: 'mazmorra-5-tesoro', title: 'Mazmorra 5/5 · Sala del tesoro: "You found it!"', js: `I.dungeonAct('key'); I.step(2); I.teleport({ scene: 'mazmorra', x: 4, z: 4.4, yaw: 0 }); I.look(0, -0.1); I.step(2.2);` },
+  { id: 'invitacion', title: 'La invitación con su sello de lacre', js: `I.dungeonAct('card'); I.step(0.3);`, after: `I.clearCard();` },
+];
+
+export async function capture({ baseUrl, outDir, quality = 'high', width = 1280, height = 720, dpr = 2, only = null, shots = SHOTS }) {
   mkdirSync(outDir, { recursive: true });
   const { browser, page, errors } = await openGame(baseUrl, { quality, width, height, dpr });
   const out = [];
   try {
-    for (const s of SHOTS) {
+    for (const s of shots) {
       if (only && !only.includes(s.id)) continue;
       await page.evaluate(`(() => { const I = window.__invite; ${s.js} })()`);
       if (s.key) await page.keyboard.press(s.key);
       const stats = await frameStats(page);
-      const file = join(outDir, `${s.id}.png`);
-      await page.screenshot({ path: file });
+      const file = join(outDir, `${s.id}.jpg`);
+      await page.screenshot({ path: file, type: 'jpeg', quality: 88 });
       if (s.key) await page.keyboard.press(s.key);
-      out.push({ id: s.id, title: s.title, file: `${s.id}.png`, mean: +stats.mean.toFixed(1), std: +stats.std.toFixed(1) });
+      if (s.after) await page.evaluate(`(() => { const I = window.__invite; ${s.after} })()`);
+      out.push({ id: s.id, title: s.title, file: `${s.id}.jpg`, mean: +stats.mean.toFixed(1), std: +stats.std.toFixed(1) });
     }
   } finally { await browser.close(); }
   writeFileSync(join(outDir, 'index.json'), JSON.stringify(out, null, 1));
@@ -41,7 +54,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
   const server = await serve(4174);
   try {
-    const { shots, errors } = await capture({ baseUrl: server.url, outDir: join(ROOT, 'screenshots/stage1'), only: only.length ? only : null,
+    const stage2 = process.argv.includes('--stage2');
+    const { shots, errors } = await capture({ baseUrl: server.url, outDir: join(ROOT, stage2 ? 'screenshots/stage2' : 'screenshots/stage1'), shots: stage2 ? SHOTS2 : SHOTS, only: only.length ? only : null,
       dpr: process.argv.includes('--1x') ? 1 : 2, quality: process.argv.includes('--low') ? 'low' : 'high' });
     console.table(shots);
     if (errors.length) console.log(errors.join('\n'));

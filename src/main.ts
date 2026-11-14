@@ -399,6 +399,7 @@ class Game {
       },
       interact: () => g.interact(),
       walkTo: (id: string) => g.walkTo(id),
+      posOf: (id: string) => g.findInteractable(id)?.it.pos.toArray() ?? null,
       /** atajos de prueba: tomar la llave o la invitación sin apuntarles */
       dungeonAct: (a: 'key' | 'card') => (a === 'key' ? g.dungeon?.takeKey() : g.dungeon?.takeCard()),
       /** adelanta el reloj de la invitación (ms) */

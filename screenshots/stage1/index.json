@@ -1,9 +1,58 @@
 [
  {
+  "id": "estanque",
+  "title": "Estanque de los Peces",
+  "file": "estanque.jpg",
+  "mean": 91.8,
+  "std": 41.5
+ },
+ {
+  "id": "fogata",
+  "title": "Fogata de los Novios",
+  "file": "fogata.jpg",
+  "mean": 135.9,
+  "std": 56.2
+ },
+ {
+  "id": "cueva",
+  "title": "Cueva de las Amatistas",
+  "file": "cueva.jpg",
+  "mean": 44.7,
+  "std": 39.8
+ },
+ {
   "id": "cana",
   "title": "Corazón de la Caña Fístula",
-  "file": "cana.png",
-  "mean": 53,
-  "std": 41.6
+  "file": "cana.jpg",
+  "mean": 51.3,
+  "std": 40.7
+ },
+ {
+  "id": "abuelas",
+  "title": "Cocina de las Abuelas",
+  "file": "abuelas.jpg",
+  "mean": 90.1,
+  "std": 47
+ },
+ {
+  "id": "gnomos",
+  "title": "Casita de Gnomos",
+  "file": "gnomos.jpg",
+  "mean": 81.1,
+  "std": 49.5
+ },
+ {
+  "id": "bosque",
+  "title": "El bosque desde el punto de partida",
+  "file": "bosque.jpg",
+  "mean": 104.1,
+  "std": 46
+ },
+ {
+  "id": "mapa",
+  "title": "Mapa del bosque (tecla M)",
+  "file": "mapa.jpg",
+  "mean": 121.9,
+  "std": 62.4
  }
 ]

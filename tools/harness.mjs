@@ -34,7 +34,9 @@ export async function serve(port = 4173) {
 export async function openGame(baseUrl, { quality = 'low', width = 960, height = 540, dpr = 1 } = {}) {
   const chromium = await loadPlaywright();
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
-  const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: dpr });
+  // contexto explícito: permite abrir otra pestaña que comparte el almacenamiento
+  const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: dpr });
+  const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });

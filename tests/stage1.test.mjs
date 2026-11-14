@@ -53,10 +53,11 @@ test('más de 150 árboles y plantas, un río grande, tres arroyos y aves sudame
   assert.ok(world.fish >= 10, 'peces en el estanque');
 });
 
-test('seis lugares con nombre: tres espacios naturales y tres salas, cada objeto en su lugar', async () => {
+test('cada lugar tiene nombre: espacios naturales y tres salas, con cada objeto en su lugar', async () => {
   const s = await state();
-  assert.equal(s.places.length, 6);
-  assert.equal(s.places.filter((p) => p.kind === 'natural').length, 3);
+  // etapa 1: estanque, fogata, cueva + tres salas; la etapa 2 suma el campamento
+  for (const id of ['estanque', 'fogata', 'cueva', 'cana', 'abuelas', 'gnomos']) assert.ok(s.places.some((p) => p.id === id), `falta ${id}`);
+  assert.ok(s.places.filter((p) => p.kind === 'natural').length >= 3);
   assert.equal(s.places.filter((p) => p.kind === 'sala').length, 3);
   for (const p of s.places) {
     assert.ok(p.name.length > 5, `nombre de ${p.id}`);
@@ -132,7 +133,7 @@ test('Ctrl+F busca entre todos los objetos y camina hasta el elegido (entrando a
   assert.ok(total >= 23 + 6, `el buscador lista todos los objetos y lugares (${total})`);
   await page.keyboard.type('mate gall');
   assert.equal(await page.locator('#results li').count(), 1);
-  assert.match(await page.locator('#results li').first().innerText(), /Mate galleta/);
+  assert.match(await page.locator('#results li').first().innerText(), /mate galleta/i);
   await page.keyboard.press('Enter');
   let s = await state();
   assert.equal(s.search, false);
