@@ -51,6 +51,10 @@ npm test             # build + tests de las dos etapas (Playwright, WebGL por so
 npm run screenshots  # capturas en screenshots/stage1/ (con `-- --stage2`: screenshots/stage2/)
 ```
 
+`tests/deploy.test.mjs` prueba que la rama está subida a `qactions-testing/invite` y que el deploy de
+Vercel sirve el juego. La URL se toma de `DEPLOY_URL` o de `deploy.json` (`{ "url": "https://….vercel.app" }`);
+mientras no exista, el test de Vercel se saltea.
+
 Parámetros de URL: `?quality=low` (sin sombras ni post-proceso) y `?autostart=1` (saltea la
 pantalla de inicio; lo usan los tests).
 
