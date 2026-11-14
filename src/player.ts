@@ -16,8 +16,12 @@ export class Player {
   readonly eye = 1.62; readonly radius = 0.36;
   /** caminar: 1 m/s · trotar (Shift): 3 m/s */
   readonly walkSpeed = 1.0; readonly runSpeed = 3.0;
-  get speed() { return this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? this.runSpeed : this.walkSpeed; }
+  get speed() { return this.run || this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? this.runSpeed : this.walkSpeed; }
   keys = new Set<string>();
+  /** joystick táctil: dirección unitaria [derecha, adelante] o [0, 0] */
+  stick: [number, number] = [0, 0];
+  /** botón Trotar (táctil): alterna el trote */
+  run = false;
   /** falso mientras hay un panel abierto */
   enabled = true;
   walked = 0;
@@ -32,6 +36,7 @@ export class Player {
   moveInput(): [number, number] {
     let x = 0, f = 0;
     for (const k of this.keys) { const m = MOVE[k]; if (m) { x += m[0]; f += m[1]; } }
+    if (!x && !f && (this.stick[0] || this.stick[1])) return this.stick;
     return [Math.sign(x), Math.sign(f)];
   }
 

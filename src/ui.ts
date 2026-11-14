@@ -31,7 +31,18 @@ export class UI {
       e.stopPropagation();
     });
     input.addEventListener('keyup', (e) => e.stopPropagation());
+    // cerrar con un toque (o click): lector, mapa e invitación en cualquier lugar; el buscador, fuera de su caja
+    const tapClose = (id: string, close: () => void, outsideOnly = false) => $(id).addEventListener('click', (e) => {
+      if (performance.now() - this.openedAt < 400) return; // el mismo toque que lo abrió
+      if (outsideOnly && e.target !== $(id)) return;
+      close();
+    });
+    tapClose('reader', () => this.readerOpen && this.closeReader());
+    tapClose('map', () => this.mapOpen && this.closeMap());
+    tapClose('invitation', () => this.invitationOpen && this.closeInvitation());
+    tapClose('search', () => this.searchOpen && this.closeSearch(), true);
   }
+  private openedAt = 0;
 
   get anyOpen() { return this.readerOpen || this.mapOpen || this.searchOpen || this.invitationOpen || this.noticeOpen; }
 
@@ -58,7 +69,7 @@ export class UI {
     INVITATION.lines.forEach((l) => { lines.append(l, document.createElement('br')); });
     $('invitation-closing').textContent = INVITATION.closing;
     $('found').classList.remove('open');
-    $('invitation').classList.add('open'); this.invitationOpen = true;
+    $('invitation').classList.add('open'); this.invitationOpen = true; this.openedAt = performance.now();
   }
   closeInvitation() { $('invitation').classList.remove('open'); this.invitationOpen = false; this.onClose(); }
   notice(text: string) {
@@ -93,19 +104,19 @@ export class UI {
 
   openReader(place: string, title: string, text: string) {
     $('reader-place').textContent = place; $('reader-title').textContent = title; $('reader-text').textContent = text;
-    $('reader').classList.add('open'); this.readerOpen = true;
+    $('reader').classList.add('open'); this.readerOpen = true; this.openedAt = performance.now();
   }
   closeReader() { $('reader').classList.remove('open'); this.readerOpen = false; this.onClose(); }
 
   openMap(draw: (c: CanvasRenderingContext2D, w: number, h: number) => void) {
     const cv = $<HTMLCanvasElement>('map-canvas');
     draw(cv.getContext('2d')!, cv.width, cv.height);
-    $('map').classList.add('open'); this.mapOpen = true;
+    $('map').classList.add('open'); this.mapOpen = true; this.openedAt = performance.now();
   }
   closeMap() { $('map').classList.remove('open'); this.mapOpen = false; this.onClose(); }
 
   openSearch() {
-    $('search').classList.add('open'); this.searchOpen = true;
+    $('search').classList.add('open'); this.searchOpen = true; this.openedAt = performance.now();
     const input = $<HTMLInputElement>('search-input');
     input.value = ''; this.filter(''); input.focus();
   }

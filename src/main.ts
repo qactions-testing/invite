@@ -13,8 +13,11 @@ import { ForestScene } from './world/forest';
 import { RoomScene, TexLib } from './world/rooms';
 import { DungeonScene } from './world/dungeon';
 import { GameAudio } from './audio';
+import { TouchControls, isTouchDevice, FOV } from './touch';
 
 const params = new URLSearchParams(location.search);
+const TOUCH = isTouchDevice(params);
+if (TOUCH) document.body.classList.add('touch');
 const QUALITY: 'low' | 'high' = params.get('quality') === 'low' ? 'low' : 'high';
 const ROOMS = ['cana', 'abuelas', 'gnomos'];
 /** de qué escena cuelga cada una (la mazmorra está bajo la casita de gnomos) */
@@ -28,7 +31,8 @@ class Game {
   composer: EffectComposer | null = null;
   private renderPass: RenderPass | null = null;
   private bloom: UnrealBloomPass | null = null;
-  camera = new THREE.PerspectiveCamera(68, innerWidth / innerHeight, 0.08, 2600);
+  camera = new THREE.PerspectiveCamera(FOV.base, innerWidth / innerHeight, 0.08, 2600);
+  touch: TouchControls | null = null;
   ui = new UI(); player = new Player(); audio = new GameAudio(); lib = new TexLib();
   forest!: ForestScene;
   dungeon: DungeonScene | null = null;
@@ -90,7 +94,7 @@ class Game {
       // leer la trampilla es "la señal": al cerrar el mensaje, el candado cede
       if (this.trapPending && !this.ui.readerOpen) {
         this.trapPending = false;
-        if (this.dungeon) { this.trapOpen = true; this.audio.sfx('lock'); this.ui.toast('La trampilla se abrió', 'E para bajar a la mazmorra'); }
+        if (this.dungeon) { this.trapOpen = true; this.audio.sfx('lock'); this.ui.toast('La trampilla se abrió', TOUCH ? 'tocala para bajar a la mazmorra' : 'E para bajar a la mazmorra'); }
       }
     };
     document.getElementById('inv-card')!.addEventListener('click', () => this.showCard());
@@ -102,6 +106,8 @@ class Game {
   start(lock = true) {
     if (this.started) return;
     this.started = true; this.player.enabled = true;
+    document.body.classList.add('playing');
+    if (TOUCH) lock = false;
     this.ui.hideStart();
     this.audio.start();
     if (lock) this.lock();
@@ -123,13 +129,12 @@ class Game {
       if ((e.ctrlKey || e.metaKey) && e.code === 'KeyF') {
         e.preventDefault();
         if (!this.started) return;
-        if (this.ui.searchOpen) this.ui.closeSearch();
-        else { this.ui.readerOpen && this.ui.closeReader(); this.ui.mapOpen && this.ui.closeMap(); document.exitPointerLock?.(); this.player.keys.clear(); this.player.enabled = false; this.ui.openSearch(); }
+        if (this.ui.searchOpen) this.ui.closeSearch(); else this.openSearch();
         return;
       }
       if (!this.started || this.ui.searchOpen || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.code === 'KeyM') { this.toggleMap(); return; }
-      if (e.code === 'Escape') { this.ui.readerOpen && this.ui.closeReader(); this.ui.mapOpen && this.ui.closeMap(); this.ui.invitationOpen && this.ui.closeInvitation(); this.ui.noticeOpen && this.ui.closeNotice(); return; }
+      if (e.code === 'Escape') { this.closePanels(); return; }
       if (e.code === 'KeyI') { this.ui.invitationOpen ? this.ui.closeInvitation() : this.showCard(); return; }
       if (e.code === 'KeyE' && !e.repeat) { this.interact(); return; }
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { this.player.keys.add(e.code); return; }
@@ -147,7 +152,31 @@ class Game {
       if (!this.started || this.ui.anyOpen || this.walking) return;
       if (document.pointerLockElement === cv || this.drag) this.player.look(e.movementX, e.movementY);
     });
+    if (TOUCH) {
+      const g = this;
+      this.touch = new TouchControls({
+        get started() { return g.started; }, get walking() { return g.walking; }, get hasCard() { return !!g.card; },
+        get anyOpen() { return g.ui.anyOpen; }, get hovering() { return !!g.hover; },
+        player: this.player, camera: this.camera, canvas: cv,
+        interact: () => this.interact(), toggleMap: () => this.toggleMap(), openSearch: () => this.openSearch(),
+        showCard: () => this.showCard(), closeAll: () => this.closeAll(), cancelWalk: () => this.cancelWalk(),
+      });
+    }
   }
+  /** Ctrl+F o el botón Buscar */
+  openSearch() {
+    if (!this.started || this.ui.searchOpen) return;
+    this.ui.readerOpen && this.ui.closeReader(); this.ui.mapOpen && this.ui.closeMap();
+    document.exitPointerLock?.(); this.player.keys.clear(); this.player.enabled = false;
+    this.ui.openSearch();
+  }
+  /** Esc: cierra el panel abierto */
+  closePanels() {
+    this.ui.readerOpen && this.ui.closeReader(); this.ui.mapOpen && this.ui.closeMap(); this.ui.searchOpen && this.ui.closeSearch();
+    this.ui.invitationOpen && this.ui.closeInvitation(); this.ui.noticeOpen && this.ui.closeNotice();
+  }
+  /** botón Cerrar (táctil): cierra paneles y corta la caminata automática */
+  closeAll() { this.closePanels(); if (this.walking) this.cancelWalk(); }
 
   // ---------------------------------------------------------------- escenas
   setScene(id: string, from: string | null) {
@@ -191,7 +220,9 @@ class Game {
       }
     }
     const h = this.hover;
-    this.ui.prompt(!h ? null : h.id === 'trampilla' && this.trapOpen ? 'E — Bajar a la mazmorra' : h.prompt ?? (h.action === 'read' ? `E — Leer: ${h.name}` : h.target === 'bosque' ? 'E — Salir al bosque' : `E — Entrar: ${h.name}`));
+    const text = !h ? null : h.id === 'trampilla' && this.trapOpen ? 'E — Bajar a la mazmorra' : h.prompt ?? (h.action === 'read' ? `E — Leer: ${h.name}` : h.target === 'bosque' ? 'E — Salir al bosque' : `E — Entrar: ${h.name}`);
+    // en táctil se toca el objeto (o el botón Leer): sin la tecla
+    this.ui.prompt(text && TOUCH ? `Tocá · ${text.replace(/^(Click o )?E — /, '')}` : text);
   }
   interact() {
     if (this.ui.invitationOpen) { this.ui.closeInvitation(); return; }
@@ -287,7 +318,7 @@ class Game {
     this.cancelWalk();
     const token = ++this.walkToken;
     this.walking = true; this.player.keys.clear();
-    this.ui.walkHint(`Caminando hacia ${label}… (una tecla de movimiento cancela)`);
+    this.ui.walkHint(`Caminando hacia ${label}… (${TOUCH ? 'el joystick o Cerrar cancelan' : 'una tecla de movimiento cancela'})`);
     const done = () => { if (token !== this.walkToken) return; this.walking = false; this.ui.walkHint(null); this.ui.toast(label); };
     const next = () => {
       if (token !== this.walkToken) return;
@@ -340,6 +371,7 @@ class Game {
     }
     this.audio.update(dt, this.camera, this.current.ambience?.(this.camera.position) ?? { water: 0, fire: 0, cave: 0 }, this.current.indoor);
     this.ui.fade(this.fadeK);
+    this.touch?.update();
   }
   render() { if (this.composer) this.composer.render(); else this.renderer.render(this.current.scene, this.camera); }
   private frame = (now: number) => {
@@ -428,7 +460,7 @@ class Game {
           invitation: g.ui.invitationOpen ? document.querySelector('#invitation .card')!.textContent : null,
           notice: g.ui.noticeOpen ? document.getElementById('notice-text')!.textContent : null,
           found: document.getElementById('found')!.classList.contains('open') ? document.getElementById('found-title')!.textContent : null,
-          speed: g.player.speed,
+          speed: g.player.speed, run: g.player.run, fov: g.camera.fov, touch: !!g.touch,
           audio: g.audio.state(), errors: g.errors,
         };
       },

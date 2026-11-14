@@ -31,11 +31,12 @@ export async function serve(port = 4173) {
 }
 
 /** Abre el juego y espera a que window.__invite esté listo. Deja el bucle en modo manual (determinista). */
-export async function openGame(baseUrl, { quality = 'low', width = 960, height = 540, dpr = 1 } = {}) {
+export async function openGame(baseUrl, { quality = 'low', width = 960, height = 540, dpr = 1, mobile = false } = {}) {
   const chromium = await loadPlaywright();
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
-  // contexto explícito: permite abrir otra pestaña que comparte el almacenamiento
-  const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: dpr });
+  // contexto explícito: permite abrir otra pestaña que comparte el almacenamiento.
+  // mobile: pantalla táctil emulada (puntero "coarse"), como un celular
+  const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: dpr, ...(mobile ? { hasTouch: true, isMobile: true } : {}) });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));

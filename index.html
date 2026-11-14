@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Invite — Bosque del Cono Sur</title>
 <meta name="description" content="Un bosque del Cono Sur para caminar hasta encontrar una invitación." />
 <style>
@@ -96,6 +96,48 @@
   #results li small { opacity: 0.65; font-size: 13px; white-space: nowrap; }
   #results li.sel { background: rgba(226, 182, 90, 0.22); }
   #search .foot { font-size: 12.5px; opacity: 0.6; padding: 8px 14px; }
+
+  /* ---- táctil (celular/tablet): textos por dispositivo, joystick y botones ---- */
+  body:not(.touch) .tc, body.touch .pc { display: none !important; }
+  body.touch { overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  body.touch #app canvas { touch-action: none; }
+  body.touch #walk { bottom: auto; top: 18%; }
+  body.touch #inv { top: calc(12px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right)); }
+  #touch { display: none; position: fixed; inset: 0; pointer-events: none; z-index: 26; }
+  body.touch.playing #touch { display: block; }
+  /* 70 % transparentes (30 % visibles); al tocarlos se ven más */
+  #stick { position: absolute; left: calc(20px + env(safe-area-inset-left)); bottom: calc(26px + env(safe-area-inset-bottom));
+    width: 136px; height: 136px; border-radius: 50%; background: #1b1b1b; border: 3px solid #d8d8d8; opacity: 0.3;
+    pointer-events: auto; touch-action: none; transition: opacity 0.15s; }
+  #knob { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px; border-radius: 50%; background: #fff; pointer-events: none; }
+  #stick.on { opacity: 0.6; }
+  #tbtns { position: absolute; right: calc(14px + env(safe-area-inset-right)); bottom: calc(26px + env(safe-area-inset-bottom));
+    display: grid; grid-template-columns: repeat(2, 92px); gap: 10px; pointer-events: auto; }
+  #tbtns button { font: inherit; font-size: 15px; height: 46px; padding: 0 6px; border-radius: 12px; background: #1b1b1b; color: #fff;
+    border: 2px solid #d8d8d8; opacity: 0.3; touch-action: manipulation; transition: opacity 0.15s; }
+  #tbtns button.down, #tbtns button.on { opacity: 0.7; }
+  #tbtns button.on { border-color: var(--gold); color: #ffe9bd; }
+  #tbtns button.ready { border-color: var(--gold); }
+  #tbtns button.off { visibility: hidden; }
+  /* con un panel abierto solo queda Cerrar (y un toque en el panel también cierra) */
+  body.touch.panel #stick, body.touch.panel #tbtns button:not([data-a=close]) { display: none; }
+  body.touch.panel #tbtns { grid-template-columns: 92px; }
+  body.touch.panel #tbtns button { opacity: 0.7; }
+  @media (orientation: landscape) and (max-height: 520px) {
+    #stick { width: 116px; height: 116px; bottom: calc(16px + env(safe-area-inset-bottom)); }
+    #knob { width: 50px; height: 50px; margin: -25px; }
+    #tbtns { grid-template-columns: repeat(3, 82px); gap: 8px; bottom: calc(16px + env(safe-area-inset-bottom)); }
+    #tbtns button { height: 40px; font-size: 14px; }
+    body.touch #map canvas { height: 76vh; }
+    body.touch #reader .page { max-height: 90vh; padding: 20px 26px 16px; }
+    body.touch #reader p { font-size: 17px; }
+    body.touch #search { padding-top: 4vh; }
+  }
+  @media (max-width: 480px) {
+    #reader .page { padding: 26px 24px 20px; }
+    #reader h2 { font-size: 25px; }
+    #reader p { font-size: 18px; }
+  }
 </style>
 </head>
 <body>
@@ -106,8 +148,19 @@
   <div id="prompt"></div>
   <div id="toast"></div>
   <div id="walk"></div>
-  <div id="inv"><span id="inv-key">🗝 Llave</span><button id="inv-card">✉ Invitación · <b id="inv-time"></b> · <kbd>I</kbd></button></div>
-  <div id="hint"><kbd>WASD</kbd>/<kbd>↑↓←→</kbd> caminar · <kbd>Shift</kbd> trotar · <kbd>E</kbd> leer · <kbd>M</kbd> mapa · <kbd>Ctrl</kbd>+<kbd>F</kbd> buscar</div>
+  <div id="inv"><span id="inv-key">🗝 Llave</span><button id="inv-card">✉ Invitación · <b id="inv-time"></b><span class="pc"> · <kbd>I</kbd></span></button></div>
+  <div id="hint" class="pc"><kbd>WASD</kbd>/<kbd>↑↓←→</kbd> caminar · <kbd>Shift</kbd> trotar · <kbd>E</kbd> leer · <kbd>M</kbd> mapa · <kbd>Ctrl</kbd>+<kbd>F</kbd> buscar</div>
+</div>
+<div id="touch" aria-label="Controles táctiles">
+  <div id="stick" aria-label="Joystick: caminar"><div id="knob"></div></div>
+  <div id="tbtns">
+    <button data-a="read">Leer</button>
+    <button data-a="run">Trotar</button>
+    <button data-a="map">Mapa</button>
+    <button data-a="search">Buscar</button>
+    <button data-a="card">Invitación</button>
+    <button data-a="close">Cerrar</button>
+  </div>
 </div>
 <div id="fade"></div>
 
@@ -116,7 +169,7 @@
     <div class="place" id="reader-place"></div>
     <h2 id="reader-title"></h2>
     <p id="reader-text"></p>
-    <div class="close"><kbd>E</kbd> o <kbd>Esc</kbd> para cerrar</div>
+    <div class="close"><span class="pc"><kbd>E</kbd> o <kbd>Esc</kbd> para cerrar</span><span class="tc">Tocá para cerrar</span></div>
   </div>
 </div>
 
@@ -124,7 +177,7 @@
   <div class="sheet">
     <h3>Mapa del bosque</h3>
     <canvas id="map-canvas" width="620" height="1240"></canvas>
-    <div class="legend">◆ lugares · ▲ vos · <kbd>M</kbd> para cerrar</div>
+    <div class="legend">◆ lugares · ▲ vos · <span class="pc"><kbd>M</kbd> para cerrar</span><span class="tc">tocá para cerrar</span></div>
   </div>
 </div>
 
@@ -132,7 +185,7 @@
   <div class="box">
     <input id="search-input" type="text" placeholder="Buscar un objeto o lugar…" autocomplete="off" spellcheck="false" />
     <ul id="results"></ul>
-    <div class="foot"><kbd>↑</kbd><kbd>↓</kbd> elegir · <kbd>Enter</kbd> caminar hasta ahí · <kbd>Esc</kbd> cerrar</div>
+    <div class="foot"><span class="pc"><kbd>↑</kbd><kbd>↓</kbd> elegir · <kbd>Enter</kbd> caminar hasta ahí · <kbd>Esc</kbd> cerrar</span><span class="tc">Tocá un resultado para caminar hasta ahí · tocá afuera para cerrar</span></div>
   </div>
 </div>
 
@@ -144,7 +197,7 @@
     <p class="lines" id="invitation-lines"></p>
     <p class="closing" id="invitation-closing"></p>
     <div id="seal" aria-label="Sello de lacre rojo oscuro">A·G</div>
-    <div class="timer">Se autodestruye en <b id="invitation-time"></b> · <kbd>I</kbd> o <kbd>Esc</kbd> para guardarla</div>
+    <div class="timer">Se autodestruye en <b id="invitation-time"></b> · <span class="pc"><kbd>I</kbd> o <kbd>Esc</kbd> para guardarla</span><span class="tc">tocá para guardarla</span></div>
   </div>
 </div>
 
@@ -161,7 +214,15 @@
   <h1>Bosque del Cono Sur</h1>
   <div class="sub">Son las cinco de la tarde. En algún lugar de este bosque, una casita de gnomos guarda una invitación.</div>
   <button id="enter">Entrar al bosque</button>
-  <div class="keys">
+  <div class="keys tc">
+    <span>Joystick</span><span>caminar (1 m/s)</span>
+    <span>Trotar</span><span>trotar (3 m/s)</span>
+    <span>Deslizar el dedo</span><span>mirar</span>
+    <span>Pellizcar</span><span>zoom</span>
+    <span>Tocar un objeto o Leer</span><span>leer / entrar</span>
+    <span>Mapa · Buscar</span><span>mapa del bosque · caminar hasta un objeto</span>
+  </div>
+  <div class="keys pc">
     <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> o flechas</span><span>caminar</span>
     <span><kbd>Shift</kbd></span><span>trotar (3 m/s)</span>
     <span>mouse</span><span>mirar</span>

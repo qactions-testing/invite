@@ -41,6 +41,12 @@ ceremonia crecen al acercarse. A las 2 horas la invitación se autodestruye y ha
 | `M` | mapa del bosque |
 | `Ctrl` + `F` | buscar entre todos los objetos y caminar hasta el elegido |
 
+En celulares y tablets (pantalla táctil como puntero principal) aparecen controles en pantalla, 70 %
+transparentes: joystick a la izquierda para caminar, deslizar el dedo para mirar, pellizcar para hacer
+zoom, tocar un objeto para leerlo/usarlo y botones **Leer, Trotar, Mapa, Buscar, Invitación, Cerrar**.
+Los paneles se cierran con un toque. Funciona en vertical y en horizontal. En la compu no aparecen
+(`?touch=1` los fuerza, `?touch=0` los quita).
+
 ## Desarrollo
 
 ```bash
