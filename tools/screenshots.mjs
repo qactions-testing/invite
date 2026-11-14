@@ -10,7 +10,7 @@ export const SHOTS = [
   { id: 'estanque', title: 'Estanque de los Peces', js: `I.teleport('estanque', 10.4); I.look(I.state().yaw, -0.3); I.step(2);` },
   { id: 'fogata', title: 'Fogata de los Novios', js: `I.teleport('fogata', 5.6, 1.5); I.portraits(1); I.look(I.state().yaw, 0.03); I.step(1.5);` },
   { id: 'cueva', title: 'Cueva de las Amatistas', js: `const p = I.state().places.find((q) => q.id === 'cueva'); I.teleport({ x: p.x + 2.6, z: p.z + 0.5, yaw: 1.42, scene: 'bosque' }); I.look(1.42, 0.2); I.step(1.5);` },
-  { id: 'cana', title: 'Corazón de la Caña Fístula', js: `I.teleport('cana'); I.teleport({ x: -0.9, z: 2.0, yaw: -0.42 }); I.look(-0.42, -0.1); I.step(1.5);` },
+  { id: 'cana', title: 'Corazón de la Caña Fístula', js: `I.teleport('cana'); I.teleport({ x: -0.5, z: -2.0, yaw: -2.6 }); I.look(-2.6, -0.4); I.step(1.5);` },
   { id: 'abuelas', title: 'Cocina de las Abuelas', js: `I.teleport('abuelas'); I.teleport({ x: -0.75, z: 2.1, yaw: -0.3 }); I.look(-0.3, -0.06); I.step(3.5);` },
   { id: 'gnomos', title: 'Casita de Gnomos', js: `I.teleport('gnomos'); I.teleport({ x: -0.2, z: 1.75, yaw: -0.1 }); I.look(-0.1, -0.2); I.step(1.5);` },
   { id: 'bosque', title: 'El bosque desde el punto de partida', js: `I.teleport({ x: I.state().places.find((q) => q.id === 'fogata').x - 12, z: I.state().places.find((q) => q.id === 'fogata').z - 20, yaw: 2.6, scene: 'bosque' }); I.look(2.6, 0.02); I.step(1.5);` },

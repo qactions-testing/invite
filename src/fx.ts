@@ -39,7 +39,7 @@ void main() {
   float f = body * lick * smoothstep(0.0, 0.07, y);
   vec3 col = mix(vec3(1.0, 0.22, 0.02), vec3(1.0, 0.68, 0.14), smoothstep(0.2, 0.7, f));
   col = mix(col, vec3(1.0, 0.96, 0.78), smoothstep(0.72, 1.0, f * (1.2 - y)));
-  gl_FragColor = vec4(col * (1.3 + 1.6 * f), clamp(f * 1.25, 0.0, 1.0));${TAIL}
+  gl_FragColor = vec4(col * (0.85 + 0.6 * f), clamp(f * 1.25, 0.0, 1.0));${TAIL}
 }`,
     });
     const geo = new THREE.PlaneGeometry(1.5 * size, 2.1 * size).translate(0, 1.0 * size, 0);
@@ -85,7 +85,7 @@ void main() {
   update(t: number) {
     this.uTime.value = t;
     this.level = flicker(t, this.group.userData.seed);
-    this.glow.material.opacity = 0.4 + 0.25 * this.level;
+    this.glow.material.opacity = 0.22 + 0.16 * this.level;
     if (this.light) this.light.intensity = this.base * this.level;
   }
 }

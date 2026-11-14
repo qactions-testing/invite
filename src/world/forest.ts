@@ -292,7 +292,7 @@ void main() {
 void main() {
   float rim = pow(abs(dot(normalize(vN), normalize(vV))), 1.6);
   float streak = 0.75 + 0.25 * sin(vUv.x * 60.0 + uTime * 0.3) * sin(vUv.x * 23.0 - uTime * 0.2);
-  float a = rim * streak * smoothstep(0.0, 0.25, vUv.y) * (0.35 + 0.65 * vUv.y) * 0.16;
+  float a = rim * streak * smoothstep(0.0, 0.2, vUv.y) * (0.45 + 0.55 * vUv.y) * 0.5;
   gl_FragColor = vec4(vec3(1.0, 0.9, 0.7) * a, a);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>

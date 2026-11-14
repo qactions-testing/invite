@@ -51,7 +51,8 @@ def room_cana():
     # puerta de salida (arco)
     rd = rfn(A_DOOR, 1.0)
     d = [box('p1', (1.24, 0.09, 1.75), (0, -rd + 0.06, 0.875), door_m, uv=0.9),
-         cyl('p2', 0.62, 0.62, 0.09, (0, -rd + 0.06, 1.75), door_m, 28, rot=(math.pi / 2, 0, 0), uv=0.9),
+         # el arco va 2 cm detrás de la hoja: si quedan coplanares, el horneado las oscurece
+         cyl('p2', 0.62, 0.62, 0.07, (0, -rd + 0.04, 1.75), door_m, 28, rot=(math.pi / 2, 0, 0), uv=0.9),
          sphere('p3', 0.05, (0.42, -rd + 0.14, 1.0), brass)]
     objs.append(join('I_puerta', d))
     objs.append(torus('marco', 0.68, 0.085, (0, -rd + 0.08, 1.75), dark, rot=(math.pi / 2, 0, 0), arc=math.pi))
