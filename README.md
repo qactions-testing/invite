@@ -69,5 +69,4 @@ Variables del horneado: `BAKE_SIZE` (2048), `BAKE_SAMPLES` (160), `BAKE_DENOISE`
 
 ## Contenido
 
-Los lugares, objetos, mensajes y el texto de la invitación viven en `src/content/ideas.ts`
-(los mensajes del campamento todavía son borradores). Licencias de assets: ver [ASSETS.md](ASSETS.md).
+Los lugares, objetos, mensajes y el texto de la invitación viven en `src/content/ideas.ts`. Licencias de assets: ver [ASSETS.md](ASSETS.md).

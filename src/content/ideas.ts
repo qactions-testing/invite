@@ -45,11 +45,10 @@ export const PLACES: PlaceDef[] = [
   {
     id: 'campamento', name: 'Campamento de los Viajeros', idea: 'El viaje: la casa también se lleva a cuestas', kind: 'natural', ll: [-65.6, -38.4], scene: 'bosque',
     objects: [
-      // BORRADORES de la etapa 2: reemplazar por los textos definitivos
       { id: 'carpa', name: 'Carpa para dos', message: 'Dos bolsas de dormir y un solo cierre.\nAfuera puede llover todo lo que quiera.' },
-      { id: 'remera-amarilla', name: 'Remera amarilla', message: 'Amarilla, con una estampa negra y rosa.\nSe seca al sol de la tarde y ya huele a viaje.' },
-      { id: 'remera-centaura', name: 'Remera de la centaura cebra', message: 'Blanca, con una centaura estampada en negro: mitad mujer, mitad cebra.\nNadie la doma.' },
-      { id: 'mochila', name: 'Mochila de viaje', message: 'Adentro hay un mapa doblado mil veces, yerba y una linterna.\nCon eso alcanza.' },
+      { id: 'remera-amarilla', name: 'Remera de "La Máquina de hacer pájaros"', message: 'Nunca dejes de reírte, no. No te dejes desanimar.\nSe seca al sol de la tarde y ya huele bien, a trébol y anís.' },
+      { id: 'remera-centaura', name: 'Remera de la centaura cebra', message: 'La centaura se enfrenta a los peligros de la vida mundana: mitad mujer, mitad cebra.\nNadie puede domarla.' },
+      { id: 'mochila', name: 'Mochila de viaje', message: 'Adentro hay un mapa doblado mil veces, yerba agroecológica y una linterna.\nCon eso alcanza y sobra.' },
       { id: 'guitarra', name: 'Guitarra criolla', message: 'Es la que se oye a lo lejos en todo el bosque.\nAlguien la dejó afinada.' },
     ],
   },
@@ -57,7 +56,7 @@ export const PLACES: PlaceDef[] = [
     id: 'cana', name: 'Corazón de la Caña Fístula', idea: 'Un árbol milenario. El hogar de miles de especies vivas: la mesa está servida y mate espumosín listo', kind: 'sala', ll: [-59.6, -24.4], scene: 'cana',
     objects: [
       { id: 'mate', name: 'El mate galleta', message: 'Alias "Espumosín": Nunca su amargor cortó su dulzura.\nPreparado para quienes llegan cansadxs del camino.' },
-      { id: 'empanadas', name: 'Fuente de empanadas', message: 'Pura maná argentina. Elixir de lxs hambrientxs.\nComelas sin apuro, todo está bien.' },
+      { id: 'empanadas', name: 'Fuente de empanadas', message: 'Puro maná argentino. Elixir de lxs hambrientxs.\nComelas sin apuro, todo está bien.' },
       { id: 'locro', name: 'Olla de locro', message: 'Papota argenta: proteína mineral, vegetal, animal y espiritual.' },
       { id: 'cuadro-raices', name: 'Página enmarcada: Raíces', message: 'Un árbol es tan alto como hondas son sus raíces.' },
       { id: 'cuadro-sombra', name: 'Página enmarcada: Sombra', message: 'Quien planta un árbol sabiendo que no se sentará a su sombra, todo entendió.' },
