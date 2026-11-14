@@ -174,6 +174,16 @@ export class RoomScene implements GameScene {
     this.sparkles.forEach((s, i) => { s.scale.setScalar(0.2 + 0.06 * Math.sin(t * 2.4 + i * 1.7)); s.material.rotation = t * 0.4 + i; });
   }
 
-  entry() { return { pos: new THREE.Vector3(this.meta.spawn.x, this.meta.floorY, this.meta.spawn.z), yaw: this.meta.spawn.yaw }; }
-  ambience() { return { water: 0, fire: this.meta.fires.length ? 0.8 : 0, cave: 0 }; }
+  entry(from?: string | null) {
+    // al volver de la mazmorra se aparece junto a la trampilla
+    const trap = from === 'mazmorra' ? this.interactables.find((i) => i.id === 'trampilla') : null;
+    if (trap) return { pos: new THREE.Vector3(trap.pos.x + 0.05, this.meta.floorY, trap.pos.z + 1.1), yaw: Math.PI };
+    return { pos: new THREE.Vector3(this.meta.spawn.x, this.meta.floorY, this.meta.spawn.z), yaw: this.meta.spawn.yaw };
+  }
+  ambience(cam?: THREE.Vector3) {
+    // junto a la trampilla se oyen bombos muy lejanos
+    const trap = this.interactables.find((i) => i.id === 'trampilla');
+    const drums = trap && cam ? 0.12 * Math.max(0, 1 - Math.hypot(cam.x - trap.pos.x, cam.z - trap.pos.z) / 3.2) : 0;
+    return { water: 0, fire: this.meta.fires.length ? 0.8 : 0, cave: 0, drums };
+  }
 }

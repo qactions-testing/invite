@@ -1,5 +1,5 @@
 # Construye, hornea y exporta las salas y la cueva.
-# Uso: blender -b -P blender/build.py -- [cana|abuelas|gnomos|cueva|all]
+# Uso: blender -b -P blender/build.py -- [cana|abuelas|gnomos|cueva|kit|all]
 import sys, os, math, random
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import *  # noqa: F401,F403
@@ -699,9 +699,107 @@ def cave():
     bake_and_export('cueva', [cave_in, est, boulder, drusa, amatistas], [outer], meta, fire=False)
 
 
+# =============================================================== Kit modular de la mazmorra
+def _cut(ob, cutters, uv=1.2):
+    """Resta booleana, un cortador por vez (unidos se solapan y el booleano exacto falla). Recalcula el UV."""
+    bpy.context.view_layer.objects.active = ob
+    for c in cutters:
+        m = ob.modifiers.new('corte', 'BOOLEAN')
+        m.operation = 'DIFFERENCE'; m.object = c; m.solver = 'EXACT'
+        bpy.ops.object.modifier_apply(modifier='corte')
+        bpy.data.objects.remove(c)
+    uv_box(ob, uv)
+    return ob
+
+
+def dungeon_kit():
+    """Piezas sueltas en el origen, en un solo GLB: wall, arch, floor, ceiling, stairs, door, torch,
+    chest_base, chest_lid, key, pillar, pedestal, barrel, crate, candle. Módulo de 2 m, altura 3 m."""
+    reset()
+    rng = random.Random(21)
+    stone = mat_ph('old_stone_wall', '8f8a82')
+    cobble = mat_ph('cobblestone_floor_04', '8a857c')
+    wood = mat_ph('brown_planks_09', '7a5a3c')
+    iron = mat_color('hierro_kit', (0.035, 0.035, 0.04), 0.55, 0.3)
+    gold = mat_color('oro', (0.85, 0.55, 0.1), 0.35, 0.3)
+    ember = mat_color('brasa', (0, 0, 0), emit=(1.0, 0.4, 0.08), strength=5.0)
+    P = []
+
+    def blocks(n, y):
+        out = []
+        for i in range(n):
+            w, h = rng.uniform(0.35, 0.6), rng.uniform(0.2, 0.3)
+            out.append(box(f'bl{i}', (w, 0.05, h), (rng.uniform(-1 + w / 2, 1 - w / 2), y, rng.uniform(0.5, 2.6)), stone, uv=1.2))
+        return out
+
+    # pared: paño de 2 × 3 m con zócalo, cornisa y bloques en relieve de los dos lados
+    P.append(join('wall', [box('w0', (2.0, 0.26, 3.0), (0, 0, 1.5), stone, uv=1.2), box('w1', (2.0, 0.34, 0.32), (0, 0, 0.16), stone, uv=1.2),
+                           box('w2', (2.0, 0.32, 0.14), (0, 0, 2.93), stone, uv=1.2)] + blocks(4, 0.14) + blocks(4, -0.14)))
+    # arco: el mismo paño con un vano de 1,3 × 2,3 m, jambas y dovelas
+    a = box('arch', (2.0, 0.3, 3.0), (0, 0, 1.5), stone, uv=1.2)
+    _cut(a, [box('c1', (1.3, 1.0, 1.65), (0, 0, 0.825), None), cyl('c2', 0.65, 0.65, 1.0, (0, 0, 1.65), None, 32, rot=(math.pi / 2, 0, 0))])
+    trim = [box(f'j{s}', (0.2, 0.38, 1.65), (s * 0.76, 0, 0.825), stone, uv=0.9) for s in (-1, 1)]
+    for k in range(9):
+        ang = math.pi * k / 8
+        trim.append(box(f'd{k}', (0.3, 0.38, 0.22), (math.cos(ang) * 0.78, 0, 1.65 + math.sin(ang) * 0.78), stone, rot=(0, math.pi / 2 - ang, 0), uv=0.9))
+    P.append(join('arch', [a] + trim))
+    P.append(box('floor', (2.0, 2.0, 0.12), (0, 0, -0.06), cobble, uv=1.0))
+    P.append(join('ceiling', [box('t0', (2.0, 2.0, 0.12), (0, 0, 0.06), stone, uv=1.4), box('t1', (2.0, 0.18, 0.16), (0, 0, -0.08), wood, uv=0.8)]))
+    # escalera: 8 escalones que suben 2 m en 2 m (hacia +Y)
+    P.append(join('stairs', [box(f's{i}', (1.7, 0.25, 0.25 * (i + 1)), (0, -1.0 + 0.125 + 0.25 * i, 0.125 * (i + 1)), stone, uv=1.0) for i in range(8)]))
+    # puerta: hoja con arco, herrajes y argolla; el origen es la bisagra
+    d = [box('h0', (1.26, 0.09, 1.62), (0.63, 0, 0.81), wood, uv=0.9), cyl('h1', 0.63, 0.63, 0.07, (0.63, 0, 1.62), wood, 28, rot=(math.pi / 2, 0, 0), uv=0.9),
+         box('h5', (0.14, 0.12, 0.2), (1.1, 0, 1.0), iron)]
+    d += [box(f'hb{i}', (1.2, 0.11, 0.07), (0.63, 0, z), iron) for i, z in enumerate((0.35, 1.0, 1.55))]
+    d += [torus(f'hr{s}', 0.075, 0.014, (1.0, s * 0.075, 1.0), iron, rot=(math.pi / 2, 0, 0), segs=16, tsegs=6) for s in (-1, 1)]
+    P.append(join('door', d))
+    # antorcha de pared: el origen es la cara del muro; la llama va en (0, 0.24, 0.5)
+    P.append(join('torch', [box('a0', (0.08, 0.02, 0.26), (0, 0.01, 0.0), iron), tube('a1', [(0, 0.02, -0.06), (0, 0.2, 0.0), (0, 0.24, 0.12)], 0.013, iron, 6),
+                            cyl('a2', 0.022, 0.026, 0.42, (0, 0.24, 0.21), wood, 8, uv=0.5), cyl('a3', 0.035, 0.065, 0.09, (0, 0.24, 0.43), iron, 10),
+                            sphere('a4', 0.05, (0, 0.24, 0.47), ember, segs=8, rings=6)]))
+    # cofre: base y tapa aparte (origen de la tapa = bisagra trasera)
+    cb = [box('k0', (0.9, 0.55, 0.4), (0, 0, 0.2), wood, uv=0.7), box('k1', (0.8, 0.45, 0.02), (0, 0, 0.4), mat_color('hollin', (0.012, 0.01, 0.008), 1.0)),
+          box('k2', (0.12, 0.03, 0.13), (0, -0.285, 0.33), gold), sphere('k3', 1.0, (0, 0, 0.4), gold, scale=(0.36, 0.2, 0.08), segs=14, rings=8)]
+    cb += [box(f'kb{i}', (0.07, 0.58, 0.42), (x, 0, 0.21), iron) for i, x in enumerate((-0.33, 0, 0.33))]
+    P.append(join('chest_base', cb))
+    lid = cyl('l0', 0.275, 0.275, 0.9, (0, -0.275, 0), wood, 20, rot=(0, math.pi / 2, 0), uv=0.7)
+    _cut(lid, [box('lc', (1.2, 1.0, 0.6), (0, -0.275, -0.3), None)], 0.7)
+    bands = []
+    for i, x in enumerate((-0.33, 0, 0.33)):
+        b = cyl(f'lb{i}', 0.29, 0.29, 0.07, (x, -0.275, 0), iron, 20, rot=(0, math.pi / 2, 0))
+        bands.append(_cut(b, [box('lc', (0.3, 1.0, 0.6), (x, -0.275, -0.3), None)]))
+    P.append(join('chest_lid', [lid] + bands))
+    P.append(join('key', [torus('y0', 0.045, 0.012, (-0.07, 0, 0), gold, rot=(math.pi / 2, 0, 0), segs=16, tsegs=6), tube('y1', [(-0.025, 0, 0), (0.13, 0, 0)], 0.011, gold, 6),
+                          box('y2', (0.02, 0.014, 0.045), (0.1, 0, -0.03), gold), box('y3', (0.02, 0.014, 0.03), (0.127, 0, -0.022), gold)]))
+    P.append(join('pillar', [box('p0', (0.62, 0.62, 0.25), (0, 0, 0.125), stone, uv=0.9), cyl('p1', 0.2, 0.2, 2.5, (0, 0, 1.5), stone, 12, uv=0.9), box('p2', (0.62, 0.62, 0.25), (0, 0, 2.875), stone, uv=0.9)]))
+    P.append(join('pedestal', [box('e0', (0.5, 0.5, 0.9), (0, 0, 0.45), stone, uv=0.8), box('e1', (0.62, 0.62, 0.08), (0, 0, 0.94), stone, uv=0.8)]))
+    P.append(join('barrel', [lathe('r0', [(0.0, 0), (0.24, 0), (0.3, 0.2), (0.31, 0.35), (0.3, 0.5), (0.24, 0.7), (0.0, 0.7)], (0, 0, 0), wood, 16, uv=0.6, cyl_uv=True)] +
+                  [torus(f'r{z}', 0.285 if z < 0.3 else 0.275, 0.014, (0, 0, z), iron, segs=20, tsegs=5) for z in (0.14, 0.56)]))
+    cr = [box('x0', (0.6, 0.6, 0.6), (0, 0, 0.3), wood, uv=0.6)]
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            cr.append(box(f'x{sx}{sy}', (0.07, 0.07, 0.64), (sx * 0.29, sy * 0.29, 0.32), mat_ph('brown_planks_09', '4a3422'), uv=0.6))
+    P.append(join('crate', cr))
+    P.append(cyl('candle', 0.025, 0.028, 0.16, (0, 0, 0.08), mat_color('cera', (0.92, 0.88, 0.75), 0.5), 10))
+
+    out = os.path.join(ROOT, 'public', 'assets', 'dungeon')
+    os.makedirs(out, exist_ok=True)
+    for o in bpy.context.scene.objects:
+        o.select_set(False)
+    for o in P:
+        o.select_set(True)
+    bpy.ops.export_scene.gltf(filepath=os.path.join(out, 'kit.glb'), export_format='GLB', use_selection=True, export_apply=True,
+                              export_materials='EXPORT', export_image_format='NONE', export_yup=True, export_cameras=False, export_lights=False, export_animations=False)
+    with open(os.path.join(out, 'kit.json'), 'w') as f:
+        json.dump({'module': 2.0, 'height': 3.0, 'pieces': [o.name for o in P]}, f, indent=1)
+    print(f'[kit] exportado: {len(P)} piezas → {[o.name for o in P]}')
+
+
 ROOMS = {'cana': room_cana, 'abuelas': room_abuelas, 'gnomos': room_gnomos, 'cueva': cave}
+EXTRA = {'kit': dungeon_kit}
 
 if __name__ == '__main__':
     args = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else ['all']
-    for name in (ROOMS if 'all' in args else args):
-        ROOMS[name]()
+    todo = list(ROOMS) + list(EXTRA) if 'all' in args else args
+    for name in todo:
+        {**ROOMS, **EXTRA}[name]()

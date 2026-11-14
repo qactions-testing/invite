@@ -29,6 +29,8 @@ export class ForestScene implements GameScene {
   fire!: Fire; portraits!: Portraits;
   pond = { x: 0, z: 0, r: 7.5, level: 0 };
   fishCount = 0;
+  /** radio máximo que alcanzan los peces (m), dentro de la orilla */
+  fishReach = 6.2;
   private hash = new CircleHash(4);
   private solids: Circle[] = [];
   private cave: { x: number; z: number; meta: CaveMeta } | null = null;
@@ -62,10 +64,12 @@ export class ForestScene implements GameScene {
     T.stampFlat(P.cana.x, P.cana.z, 8, 7);
     T.stampFlat(P.abuelas.x, P.abuelas.z, 8.5, 6);
     T.stampFlat(P.gnomos.x, P.gnomos.z, 6.5, 6);
+    T.stampFlat(P.campamento.x, P.campamento.z, 7, 6);
     T.stampFlat(sx, sz, 4.5, 8);
     // donde no debe crecer nada: agua del estanque, fogón, construcciones y la roca de la cueva
     T.stampBare(P.estanque.x, P.estanque.z, 7.9);
     T.stampBare(P.fogata.x, P.fogata.z, 1.4);
+    T.stampBare(P.campamento.x, P.campamento.z, 4.6);
     T.stampBare(P.cana.x, P.cana.z, 3.0); T.stampBare(P.abuelas.x, P.abuelas.z, 4.4); T.stampBare(P.gnomos.x, P.gnomos.z, 2.4);
     for (const [dx, dz, r] of [[-2.2, -0.4, 8.6], [2.0, 0.6, 4.2], [5.6, 0.9, 3.8], [8.6, 0.2, 3.2]]) T.stampBare(P.cueva.x + dx, P.cueva.z + dz, r);
 
@@ -93,6 +97,7 @@ export class ForestScene implements GameScene {
     f.buildCana(lib, sx, sz);
     f.buildCottage(lib, sx, sz);
     f.buildGnomeHouse(lib, sx, sz);
+    f.buildCamp(lib, sx, sz);
     f.scatterRocks();
 
     // de entrada se mira hacia la fogata, con el sol de costado
@@ -185,19 +190,22 @@ export class ForestScene implements GameScene {
     const n = 30, orb = new Float32Array(n * 4), col = new Float32Array(n * 3), size = new Float32Array(n);
     const pal = [[1.0, 0.4, 0.02], [1.0, 0.66, 0.08], [0.5, 0.58, 0.68], [0.85, 0.12, 0.03], [0.16, 0.13, 0.1], [0.9, 0.82, 0.62]];
     for (let i = 0; i < n; i++) {
-      orb.set([rr(rng, 1.3, r - 1.8), rr(rng, 0.35, 0.8) * (i % 6 === 0 ? -1 : 1), rng() * TAU, -rr(rng, 0.14, 0.42)], i * 4);
+      // [vueltas de la roseta, velocidad angular (rad/s, con sentido), fase, profundidad]
+      orb.set([rr(rng, 0.31, 0.83), rr(rng, 0.1, 0.2) * (i % 6 === 0 ? -1 : 1), rng() * TAU, -rr(rng, 0.14, 0.38)], i * 4);
       col.set(pal[i % pal.length], i * 3); size[i] = rr(rng, 0.6, 1.05);
     }
     fg.setAttribute('iOrb', new THREE.InstancedBufferAttribute(orb, 4)); fg.setAttribute('iCol', new THREE.InstancedBufferAttribute(col, 3)); fg.setAttribute('iSize', new THREE.InstancedBufferAttribute(size, 1));
     const fish = new THREE.InstancedMesh(fg, new THREE.ShaderMaterial({
-      side: THREE.DoubleSide, uniforms: { uTime: this.water.shared.uTime, uCenter: { value: new V3(x, level, z) } },
-      vertexShader: `attribute vec4 iOrb; attribute vec3 iCol; attribute float iSize; uniform float uTime; uniform vec3 uCenter; varying vec3 vCol; varying float vL;
+      side: THREE.DoubleSide, uniforms: { uTime: this.water.shared.uTime, uCenter: { value: new V3(x, level, z) }, uRmax: { value: this.fishReach } },
+      vertexShader: `attribute vec4 iOrb; attribute vec3 iCol; attribute float iSize; uniform float uTime, uRmax; uniform vec3 uCenter; varying vec3 vCol; varying float vL;
 void main() {
-  float ang = iOrb.z + uTime * iOrb.y / iOrb.x, dir = sign(iOrb.y);
+  // cada pez gira alrededor del centro mientras su radio va y viene entre el medio y la orilla
+  float dir = sign(iOrb.y), ang = iOrb.z + uTime * iOrb.y, q = ang * iOrb.x + iOrb.z * 3.7;
+  float rad = mix(0.9, uRmax, 0.5 + 0.5 * sin(q)), drad = (uRmax - 0.9) * 0.5 * iOrb.x * cos(q);
   vec3 p = position * iSize;
-  p.x += sin(uTime * 8.0 * abs(iOrb.y) + iOrb.z * 5.0 - position.z * 4.5) * 0.09 * iSize * smoothstep(0.35, -1.0, position.z);
-  vec2 tng = vec2(-sin(ang), cos(ang)) * dir, nrm = vec2(tng.y, -tng.x);
-  vec3 w = uCenter + vec3(cos(ang) * iOrb.x, iOrb.w + sin(uTime * 0.6 + iOrb.z) * 0.05, sin(ang) * iOrb.x);
+  p.x += sin(uTime * 6.0 + iOrb.z * 5.0 - position.z * 4.5) * 0.09 * iSize * smoothstep(0.35, -1.0, position.z);
+  vec2 tng = normalize(vec2(drad * cos(ang) - rad * sin(ang), drad * sin(ang) + rad * cos(ang))) * dir, nrm = vec2(tng.y, -tng.x);
+  vec3 w = uCenter + vec3(cos(ang) * rad, iOrb.w * mix(1.0, 0.55, rad / uRmax) + sin(uTime * 0.6 + iOrb.z) * 0.04, sin(ang) * rad);
   w.xz += tng * p.z + nrm * p.x; w.y += p.y;
   vCol = iCol; vL = 0.55 + 0.45 * max(normal.y, 0.0) + 0.25 * step(0.2, position.y);
   gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
@@ -409,6 +417,158 @@ void main() {
     const smoke = new Puffs(puffTexture(), [chim.getWorldPosition(new V3()).add(new V3(0, 0.7, 0))], { rate: 1.1, life: 4.5, rise: 0.5, size: [0.25, 1.5], sway: 0.4, opacity: 0.3, color: 0xd8cfc4 }, 12);
     this.scene.add(smoke.group); this.updaters.push((dt) => smoke.update(dt));
     this.addDoor('gnomos', d, d.getWorldPosition(new V3()).add(new V3(0, 0.7, 0)), out);
+  }
+
+  // ------------------------------------------------------------ Campamento de los Viajeros
+  /** Prenda colgada: textura con transparencia dibujada en canvas (512×512). */
+  private cloth(draw: (c: CanvasRenderingContext2D) => void, w: number, h: number): THREE.Mesh {
+    const [cv, c] = makeCanvas(512, 512);
+    draw(c);
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h).translate(0, -h / 2, 0), new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 1 }));
+    m.castShadow = true;
+    return m;
+  }
+  private shirt(c: CanvasRenderingContext2D, base: string, shade: string, print: (c: CanvasRenderingContext2D) => void) {
+    const outline = () => { c.beginPath(); c.moveTo(200, 30); c.quadraticCurveTo(256, 70, 312, 30); c.lineTo(456, 122); c.lineTo(404, 196); c.lineTo(364, 164); c.lineTo(364, 470); c.lineTo(148, 470); c.lineTo(148, 164); c.lineTo(108, 196); c.lineTo(56, 122); c.closePath(); };
+    const g = c.createLinearGradient(0, 30, 0, 470); g.addColorStop(0, base); g.addColorStop(1, shade);
+    outline(); c.fillStyle = g; c.fill();
+    c.save(); outline(); c.clip();
+    print(c);
+    c.strokeStyle = 'rgba(0,0,0,0.08)'; c.lineWidth = 6;
+    for (const x of [188, 262, 330]) { c.beginPath(); c.moveTo(x, 180); c.quadraticCurveTo(x + 14, 330, x - 6, 470); c.stroke(); }
+    c.restore();
+    c.strokeStyle = 'rgba(0,0,0,0.28)'; c.lineWidth = 6; c.beginPath(); c.moveTo(200, 30); c.quadraticCurveTo(256, 70, 312, 30); c.stroke();
+  }
+  /** Estampa negra y rosa: sol rosa, sierras negras y franjas. */
+  private printSun(c: CanvasRenderingContext2D) {
+    c.fillStyle = '#ff5fa2'; c.beginPath(); c.arc(256, 250, 74, 0, TAU); c.fill();
+    c.fillStyle = '#111'; c.beginPath(); c.moveTo(166, 322); c.lineTo(220, 238); c.lineTo(250, 282); c.lineTo(290, 214); c.lineTo(348, 322); c.closePath(); c.fill();
+    c.fillStyle = '#ff5fa2'; for (let k = 0; k < 3; k++) c.fillRect(180, 336 + k * 19, 152, 10);
+    c.strokeStyle = '#111'; c.lineWidth = 8; c.beginPath(); c.arc(256, 250, 90, 0, TAU); c.stroke();
+    c.lineWidth = 5; c.beginPath(); c.moveTo(284, 196); c.quadraticCurveTo(296, 182, 308, 196); c.quadraticCurveTo(320, 182, 332, 196); c.stroke();
+  }
+  /** Estampa negra: centaura que es mujer y cebra (no hombre y caballo), con arco. */
+  private printCentaura(c: CanvasRenderingContext2D) {
+    const ink = '#0c0c0c', paper = '#f7f7f2';
+    c.fillStyle = ink; c.strokeStyle = ink; c.lineCap = 'round'; c.lineJoin = 'round';
+    const animal = () => { c.beginPath(); c.ellipse(244, 318, 76, 37, -0.05, 0, TAU); c.closePath(); };
+    const legs = [[196, 330, 186, 384, 190, 434], [220, 338, 224, 388, 214, 434], [292, 338, 298, 388, 292, 434], [312, 326, 340, 352, 330, 394]];
+    c.lineWidth = 14;
+    for (const [x0, y0, x1, y1, x2, y2] of legs) { c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.lineTo(x2, y2); c.stroke(); }
+    c.lineWidth = 7; c.beginPath(); c.moveTo(172, 306); c.quadraticCurveTo(138, 318, 144, 372); c.stroke();
+    c.lineWidth = 15; c.beginPath(); c.moveTo(144, 372); c.lineTo(148, 398); c.stroke();
+    animal(); c.fill();
+    // torso de mujer, cabeza y pelo largo al viento
+    c.beginPath(); c.moveTo(284, 320); c.quadraticCurveTo(274, 262, 292, 230); c.lineTo(334, 230); c.quadraticCurveTo(350, 258, 324, 298); c.quadraticCurveTo(320, 322, 308, 338); c.closePath(); c.fill();
+    c.beginPath(); c.arc(314, 202, 18, 0, TAU); c.fill();
+    c.beginPath(); c.moveTo(306, 186); c.bezierCurveTo(262, 172, 236, 212, 200, 198); c.bezierCurveTo(232, 232, 262, 234, 298, 222); c.closePath(); c.fill();
+    // brazos y arco
+    c.lineWidth = 9; c.beginPath(); c.moveTo(328, 244); c.lineTo(368, 232); c.stroke();
+    c.beginPath(); c.moveTo(298, 246); c.lineTo(270, 262); c.lineTo(300, 270); c.stroke();
+    c.lineWidth = 5; c.beginPath(); c.arc(346, 232, 46, -1.25, 1.25); c.stroke();
+    c.lineWidth = 2.5; c.beginPath(); c.moveTo(346 + 46 * Math.cos(1.25), 232 - 46 * Math.sin(1.25)); c.lineTo(346 + 46 * Math.cos(1.25), 232 + 46 * Math.sin(1.25)); c.stroke();
+    // rayas de cebra sobre la mitad animal
+    c.save(); animal(); c.clip(); c.strokeStyle = paper; c.lineWidth = 6;
+    for (let k = 0; k < 10; k++) { const x = 176 + k * 15; c.beginPath(); c.moveTo(x, 274); c.quadraticCurveTo(x + 13, 318, x - 4, 362); c.stroke(); }
+    c.restore();
+    c.strokeStyle = paper; c.lineWidth = 4;
+    for (const [x, y] of [[188, 398], [190, 414], [219, 400], [216, 416], [296, 400], [294, 416], [336, 364], [333, 378]]) { c.beginPath(); c.moveTo(x - 8, y); c.lineTo(x + 8, y); c.stroke(); }
+  }
+
+  private buildCamp(lib: TexLib, sx: number, sz: number) {
+    const { x, z } = this.placePos.campamento, g = new THREE.Group();
+    this.face(g, x, z, sx, sz);
+    g.updateMatrixWorld(true);
+    const std = (color: number, rough = 0.9) => new THREE.MeshStandardMaterial({ color, roughness: rough });
+    const wood = new THREE.MeshStandardMaterial({ map: lib.get('bark_brown_02'), roughness: 1 });
+    const add = (m: THREE.Object3D, px: number, py: number, pz: number, parent: THREE.Object3D = g) => { m.position.set(px, py, pz); parent.add(m); return m; };
+
+    // carpa canadiense, con la mitad del frente abierta
+    const tent = new THREE.Group(), H = 1.45, W = 1.05, L = 2.7;
+    const quad = (p: number[][], color: number) => {
+      const bg = new THREE.BufferGeometry();
+      bg.setAttribute('position', new THREE.Float32BufferAttribute(p.flat(), 3));
+      bg.setIndex(p.length === 4 ? [0, 1, 2, 0, 2, 3] : [0, 1, 2]); bg.computeVertexNormals();
+      const m = new THREE.Mesh(bg, new THREE.MeshStandardMaterial({ color, roughness: 0.95, side: THREE.DoubleSide }));
+      m.castShadow = m.receiveShadow = true; tent.add(m);
+    };
+    quad([[-W, 0, -L / 2], [-W, 0, L / 2], [0, H, L / 2], [0, H, -L / 2]], 0xd8702a);
+    quad([[W, 0, L / 2], [W, 0, -L / 2], [0, H, -L / 2], [0, H, L / 2]], 0xd8702a);
+    quad([[W, 0, -L / 2], [-W, 0, -L / 2], [0, H, -L / 2]], 0x2a7f8a);
+    quad([[-W, 0, L / 2], [0, 0, L / 2], [0, H, L / 2]], 0x2a7f8a);
+    quad([[0, H, L / 2], [0.12, 0.02, L / 2 + 0.02], [1.2, 0.02, L / 2 + 0.55]], 0x2a7f8a); // solapa abierta
+    add(new THREE.Mesh(new THREE.BoxGeometry(W * 2 - 0.1, 0.03, L - 0.1), std(0x23262b)), 0, 0.015, 0, tent);
+    add(new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 1.5, 4, 10).rotateX(Math.PI / 2).scale(1, 0.5, 1), std(0x9b2f3c)), 0.42, 0.12, -0.1, tent);
+    add(new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 1.5, 4, 10).rotateX(Math.PI / 2).scale(1, 0.5, 1), std(0x2f5d9b)), -0.42, 0.12, -0.1, tent);
+    for (const [px, pz] of [[-W - 0.6, L / 2 + 0.3], [W + 0.6, L / 2 + 0.3], [-W - 0.6, -L / 2 - 0.3], [W + 0.6, -L / 2 - 0.3]]) {
+      const from = new V3(Math.sign(px) * 0.02, H - 0.02, Math.sign(pz) * L / 2), to = new V3(px, 0.04, pz), d = to.clone().sub(from);
+      const line = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, d.length(), 4), std(0xf2ead8));
+      line.position.copy(from).addScaledVector(d, 0.5); line.quaternion.setFromUnitVectors(new V3(0, 1, 0), d.normalize()); tent.add(line);
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.008, 0.2, 5), std(0x8a8a8a, 0.5)), px, 0.08, pz, tent);
+    }
+    tent.rotation.y = 0.5; add(tent, -2.3, 0, -0.9);
+    this.addRead('campamento', 'carpa', tent, g.localToWorld(new V3(-2.3, 1.0, -0.9)).setY(this.y(x, z) + 1.0));
+
+    // tendedero con la ropa secándose
+    const pA = new V3(0.6, 1.75, -2.6), pB = new V3(4.3, 1.75, -1.5), span = pB.clone().sub(pA), yaw = Math.atan2(span.x, span.z) - Math.PI / 2;
+    for (const p of [pA, pB]) add(new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 1.9, 7), wood), p.x, 0.95, p.z).castShadow = true;
+    const sag = (u: number) => pA.clone().lerp(pB, u).setY(1.75 - 0.16 * Math.sin(Math.PI * u));
+    const rope = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(Array.from({ length: 9 }, (_, i) => sag(i / 8))), 24, 0.008, 5), std(0xf2ead8));
+    g.add(rope);
+    const hung: THREE.Object3D[] = [];
+    const hang = (u: number, mesh: THREE.Mesh, id: string | null) => {
+      const pivot = new THREE.Group(), p = sag(u);
+      pivot.position.copy(p); pivot.rotation.y = yaw; pivot.add(mesh);
+      for (const s of [-0.22, 0.22]) add(new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.07, 0.03), std(0xc9a070)), s * (id ? 1 : 0.4), 0.0, 0, pivot);
+      g.add(pivot); hung.push(pivot);
+      if (id) this.addRead('campamento', id, pivot, g.localToWorld(p.clone().add(new V3(0, -0.42, 0))));
+    };
+    hang(0.2, this.cloth((c) => this.shirt(c, '#f6c915', '#e3ad0c', (q) => this.printSun(q)), 0.86, 0.86), 'remera-amarilla');
+    hang(0.5, this.cloth((c) => this.shirt(c, '#fbfbf6', '#e6e4da', (q) => this.printCentaura(q)), 0.86, 0.86), 'remera-centaura');
+    hang(0.74, this.cloth((c) => { c.fillStyle = '#3d7ea6'; c.fillRect(96, 0, 320, 512); c.fillStyle = '#f2ead8'; for (let k = 0; k < 6; k++) c.fillRect(96, 30 + k * 84, 320, 22); }, 0.55, 0.9), null);
+    hang(0.9, this.cloth((c) => { c.fillStyle = '#c0392b'; for (const ox of [130, 290]) { c.beginPath(); c.moveTo(ox, 0); c.lineTo(ox + 90, 0); c.lineTo(ox + 90, 330); c.quadraticCurveTo(ox + 150, 420, ox + 96, 480); c.quadraticCurveTo(ox + 20, 500, ox, 380); c.closePath(); c.fill(); } c.fillStyle = '#f2ead8'; c.fillRect(130, 0, 90, 46); c.fillRect(290, 0, 90, 46); }, 0.36, 0.36), null);
+    this.updaters.push((_dt, t) => hung.forEach((h, i) => { h.rotation.x = Math.sin(t * 1.3 + i * 1.9) * 0.1; h.rotation.z = Math.sin(t * 0.9 + i) * 0.03; }));
+
+    // mochila con bolsa de dormir enrollada
+    const pack = new THREE.Group();
+    add(new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.3, 4, 12).scale(1, 1, 0.72), std(0x2f6b4f)), 0, 0.36, 0, pack);
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.2, 0.08), std(0x24543d)), 0, 0.3, 0.15, pack);
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.46, 12).rotateZ(Math.PI / 2), std(0xc94f3d)), 0, 0.72, 0, pack);
+    for (const s of [-0.11, 0.11]) add(new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.5, 0.02), std(0x1c1c1c)), s, 0.38, -0.15, pack);
+    pack.rotation.set(-0.12, 0.7, 0); pack.traverse((o) => { o.castShadow = true; });
+    add(pack, -0.5, 0, 0.5);
+    this.addRead('campamento', 'mochila', pack, g.localToWorld(new V3(-0.5, 0.75, 0.5)));
+
+    // tronco, guitarra criolla apoyada y farol
+    const log = add(new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.3, 1.9, 12).rotateZ(Math.PI / 2), wood), 1.6, 0.27, 1.5) as THREE.Mesh;
+    log.castShadow = log.receiveShadow = true;
+    const guitar = new THREE.Group(), top = std(0xd9a55a, 0.5), side = std(0x8a4b1c, 0.6);
+    for (const [r, yy] of [[0.19, 0.2], [0.145, 0.46]]) {
+      add(new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.09, 22).rotateX(Math.PI / 2), side), 0, yy, 0, guitar);
+      add(new THREE.Mesh(new THREE.CircleGeometry(r - 0.006, 22), top), 0, yy, 0.046, guitar);
+    }
+    add(new THREE.Mesh(new THREE.CircleGeometry(0.048, 16), std(0x1a0f08)), 0, 0.37, 0.048, guitar);
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.52, 0.03), std(0x3a2414)), 0, 0.84, 0.03, guitar);
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.15, 0.03), side), 0, 1.16, 0.02, guitar);
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.02, 0.012), std(0x3a2414)), 0, 0.16, 0.05, guitar);
+    guitar.rotation.set(-0.38, -0.5, 0.06); guitar.traverse((o) => { o.castShadow = true; });
+    add(guitar, 1.25, 0.04, 1.86);
+    this.addRead('campamento', 'guitarra', guitar, g.localToWorld(new V3(1.25, 0.75, 1.75)));
+    const stump = add(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.4, 10), wood), 0.2, 0.2, 2.0) as THREE.Mesh; stump.castShadow = true;
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.14, 10), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 1.7, 0.8) })), 0.2, 0.5, 2.0);
+    for (const yy of [0.42, 0.585]) add(new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.025, 10), std(0x22262a, 0.4)), 0.2, yy, 2.0);
+    add(new THREE.PointLight(0xffb060, 7, 8, 1.8), 0.2, 0.7, 2.0);
+    // anafe con pava, heladerita y botas
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.1, 12), std(0x4a4f55, 0.4)), 2.6, 0.05, 0.6);
+    add(new THREE.Mesh(new THREE.SphereGeometry(0.12, 14, 10).scale(1, 0.8, 1), std(0x14345c, 0.35)), 2.6, 0.2, 0.6).castShadow = true;
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.34, 0.32), std(0xe9e4d8, 0.5)), 3.3, 0.17, 1.4).castShadow = true;
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.06, 0.34), std(0x2f6fb0, 0.5)), 3.3, 0.37, 1.4);
+    for (const s of [0, 0.2]) { add(new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.2, 0.13), std(0x5a3a1c)), -1.1 + s, 0.1, 1.0); add(new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.08, 0.14), std(0x5a3a1c)), -1.1 + s, 0.04, 1.11); }
+
+    this.scene.add(g); g.updateMatrixWorld(true);
+    const w = (lx: number, lz: number) => g.localToWorld(new V3(lx, 0, lz));
+    for (const [lx, lz, r] of [[-2.3, -0.9, 1.25], [-1.9, -0.2, 0.8], [-2.7, -1.6, 0.8], [1.0, 1.5, 0.4], [1.6, 1.5, 0.4], [2.2, 1.5, 0.4], [0.6, -2.6, 0.12], [4.3, -1.5, 0.12], [0.2, 2.0, 0.28], [3.3, 1.4, 0.36], [-0.5, 0.5, 0.3]]) { const p = w(lx, lz); this.solid(p.x, p.z, r); }
   }
 
   private scatterRocks() {

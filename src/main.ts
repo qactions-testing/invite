@@ -6,16 +6,20 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { GameScene, Interactable } from './core';
-import { PLACES } from './content/ideas';
+import { DUNGEON, INVITATION, PLACES } from './content/ideas';
 import { Player, isMoveKey } from './player';
 import { UI, drawMap, SearchEntry } from './ui';
 import { ForestScene } from './world/forest';
 import { RoomScene, TexLib } from './world/rooms';
+import { DungeonScene } from './world/dungeon';
 import { GameAudio } from './audio';
 
 const params = new URLSearchParams(location.search);
 const QUALITY: 'low' | 'high' = params.get('quality') === 'low' ? 'low' : 'high';
 const ROOMS = ['cana', 'abuelas', 'gnomos'];
+/** de qué escena cuelga cada una (la mazmorra está bajo la casita de gnomos) */
+const PARENT: Record<string, string> = { cana: 'bosque', abuelas: 'bosque', gnomos: 'bosque', mazmorra: 'gnomos' };
+const CARD_KEY = 'invite.card.v1';
 // en tests y capturas (autostart) la calidad no se ajusta sola
 const ADAPTIVE = QUALITY === 'high' && !params.has('autostart');
 
@@ -27,6 +31,11 @@ class Game {
   camera = new THREE.PerspectiveCamera(68, innerWidth / innerHeight, 0.08, 2600);
   ui = new UI(); player = new Player(); audio = new GameAudio(); lib = new TexLib();
   forest!: ForestScene;
+  dungeon: DungeonScene | null = null;
+  /** invitación en poder del jugador (se autodestruye a las 2 horas) */
+  card: { takenAt: number } | null = null;
+  clockOffset = 0; trapOpen = false;
+  private trapPending = false; private expiredOnLoad = false; private lastRoom = -1;
   scenes: Record<string, GameScene> = {};
   current!: GameScene;
   t = 0; manual = false; started = false;
@@ -49,6 +58,16 @@ class Game {
 
     this.forest = await ForestScene.create(r, this.lib, QUALITY, (p, t) => this.ui.progress(p, t));
     this.scenes.bosque = this.forest;
+    try {
+      this.dungeon = await DungeonScene.load(this.lib, {
+        onKey: () => { this.audio.sfx('key'); this.audio.sfx('door'); this.ui.toast(DUNGEON.keyTaken); },
+        onLocked: () => { this.audio.sfx('lock'); this.ui.toast('Puerta cerrada', DUNGEON.lockedDoor.replace('\n', ' ')); },
+        onFound: () => { this.audio.sfx('chest'); this.ui.showFound(DUNGEON.found, DUNGEON.foundSub); },
+        onTake: () => this.takeCard(),
+      });
+      this.scenes.mazmorra = this.dungeon;
+    } catch (e) { console.warn('mazmorra no disponible', e); }
+    this.loadCard();
     for (const id of ROOMS) {
       try { this.scenes[id] = await RoomScene.load(id, this.lib); }
       catch (e) { console.warn(`sala ${id} no disponible`, e); }
@@ -66,7 +85,15 @@ class Game {
     this.ui.progress(1, 'Listo');
     this.ui.showStart();
     this.ui.onPick = (e) => this.walkTo(e.id);
-    this.ui.onClose = () => { this.player.enabled = this.started && !this.ui.anyOpen; };
+    this.ui.onClose = () => {
+      this.player.enabled = this.started && !this.ui.anyOpen;
+      // leer la trampilla es "la señal": al cerrar el mensaje, el candado cede
+      if (this.trapPending && !this.ui.readerOpen) {
+        this.trapPending = false;
+        if (this.dungeon) { this.trapOpen = true; this.audio.sfx('lock'); this.ui.toast('La trampilla se abrió', 'E para bajar a la mazmorra'); }
+      }
+    };
+    document.getElementById('inv-card')!.addEventListener('click', () => this.showCard());
     if (params.has('autostart')) this.start(false);
     this.last = performance.now();
     requestAnimationFrame(this.frame);
@@ -79,6 +106,7 @@ class Game {
     this.audio.start();
     if (lock) this.lock();
     this.ui.toast(this.current.name, 'cinco de la tarde');
+    if (this.expiredOnLoad) { this.expiredOnLoad = false; this.player.enabled = false; this.ui.notice(DUNGEON.expired); }
   }
   private lock() { try { (this.renderer.domElement.requestPointerLock() as any)?.catch?.(() => {}); } catch { /* sin pointer lock: se mira arrastrando */ } }
 
@@ -101,8 +129,10 @@ class Game {
       }
       if (!this.started || this.ui.searchOpen || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.code === 'KeyM') { this.toggleMap(); return; }
-      if (e.code === 'Escape') { this.ui.readerOpen && this.ui.closeReader(); this.ui.mapOpen && this.ui.closeMap(); return; }
+      if (e.code === 'Escape') { this.ui.readerOpen && this.ui.closeReader(); this.ui.mapOpen && this.ui.closeMap(); this.ui.invitationOpen && this.ui.closeInvitation(); this.ui.noticeOpen && this.ui.closeNotice(); return; }
+      if (e.code === 'KeyI') { this.ui.invitationOpen ? this.ui.closeInvitation() : this.showCard(); return; }
       if (e.code === 'KeyE' && !e.repeat) { this.interact(); return; }
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { this.player.keys.add(e.code); return; }
       if (isMoveKey(e.code)) {
         e.preventDefault();
         if (this.walking) this.cancelWalk();
@@ -111,7 +141,7 @@ class Game {
     });
     addEventListener('keyup', (e) => this.player.keys.delete(e.code));
     addEventListener('blur', () => this.player.keys.clear());
-    cv.addEventListener('mousedown', () => { this.drag = true; if (this.started && !this.ui.anyOpen && document.pointerLockElement !== cv) this.lock(); });
+    cv.addEventListener('mousedown', () => { this.drag = true; if (this.started && !this.ui.anyOpen && this.hover?.click) this.interact(); if (this.started && !this.ui.anyOpen && document.pointerLockElement !== cv) this.lock(); });
     addEventListener('mouseup', () => { this.drag = false; });
     addEventListener('mousemove', (e) => {
       if (!this.started || this.ui.anyOpen || this.walking) return;
@@ -129,7 +159,8 @@ class Game {
     if (this.renderPass) this.renderPass.scene = sc.scene;
     if (this.bloom) this.bloom.strength = sc.indoor ? 0.42 : 0.3;
     this.hover = null; this.nearPlace = sc.indoor ? id : null;
-    if (this.started) sc.indoor ? this.ui.toast(sc.name, PLACES.find((p) => p.id === id)?.idea ?? '') : this.ui.toast(sc.name);
+    this.lastRoom = -1;
+    if (this.started && id !== 'mazmorra') sc.indoor ? this.ui.toast(sc.name, PLACES.find((p) => p.id === id)?.idea ?? '') : this.ui.toast(sc.name);
     return true;
   }
   go(target: string, then?: () => void) {
@@ -160,19 +191,58 @@ class Game {
       }
     }
     const h = this.hover;
-    this.ui.prompt(!h ? null : h.action === 'read' ? `E — Leer: ${h.name}` : h.target === 'bosque' ? 'E — Salir al bosque' : `E — Entrar: ${h.name}`);
+    this.ui.prompt(!h ? null : h.id === 'trampilla' && this.trapOpen ? 'E — Bajar a la mazmorra' : h.prompt ?? (h.action === 'read' ? `E — Leer: ${h.name}` : h.target === 'bosque' ? 'E — Salir al bosque' : `E — Entrar: ${h.name}`));
   }
   interact() {
+    if (this.ui.invitationOpen) { this.ui.closeInvitation(); return; }
+    if (this.ui.noticeOpen) { this.ui.closeNotice(); return; }
     if (this.ui.readerOpen) { this.ui.closeReader(); return; }
     if (this.ui.mapOpen) return;
     const h = this.hover;
     if (!h) return;
+    if (h.id === 'trampilla' && this.trapOpen) { this.audio.sfx('door'); this.go('mazmorra'); return; }
+    if (h.onUse) { h.onUse(); return; }
     if (h.action === 'read') {
       const place = PLACES.find((p) => p.id === h.placeId)!;
       this.player.enabled = false; this.player.keys.clear();
       this.ui.openReader(place.name, h.name, h.message ?? '');
       this.audio.chime();
+      if (h.id === 'trampilla') this.trapPending = true;
     } else if (h.target) this.go(h.target);
+  }
+
+  // ---------------------------------------------------------------- invitación (se autodestruye a las 2 h)
+  now() { return Date.now() + this.clockOffset; }
+  get cardLeft(): number | null { return this.card ? INVITATION.lifetimeMs - (this.now() - this.card.takenAt) : null; }
+  private loadCard() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(CARD_KEY) ?? 'null');
+      if (!raw || typeof raw.takenAt !== 'number') return;
+      if (this.now() - raw.takenAt < INVITATION.lifetimeMs) { this.card = { takenAt: raw.takenAt }; this.dungeon?.restoreHeld(); }
+      else { localStorage.removeItem(CARD_KEY); this.expiredOnLoad = true; }
+    } catch { /* sin almacenamiento: la invitación dura lo que dure la pestaña */ }
+  }
+  private takeCard() {
+    this.card = { takenAt: this.now() };
+    try { localStorage.setItem(CARD_KEY, JSON.stringify(this.card)); } catch { /* idem */ }
+    this.audio.fanfare();
+    this.showCard();
+  }
+  showCard() {
+    if (!this.card || !this.started || this.ui.anyOpen) return;
+    this.cancelWalk(); this.player.enabled = false; this.player.keys.clear();
+    document.exitPointerLock?.();
+    this.ui.inventory(false, this.cardLeft);
+    this.ui.openInvitation();
+  }
+  private expireCard() {
+    this.card = null;
+    try { localStorage.removeItem(CARD_KEY); } catch { /* idem */ }
+    this.dungeon?.reset();
+    this.ui.invitationOpen && this.ui.closeInvitation();
+    this.player.enabled = false; this.player.keys.clear();
+    this.audio.sfx('lock');
+    this.ui.notice(DUNGEON.expired);
   }
   toggleMap() {
     if (this.ui.mapOpen) { this.ui.closeMap(); return; }
@@ -196,6 +266,10 @@ class Game {
     pts.push(to.clone());
     return pts;
   }
+  private pathTo(to: THREE.Vector3): THREE.Vector3[] {
+    if (!this.current.indoor) return this.forestPath(to);
+    return this.current.route ? this.current.route(this.player.pos, to) : [to.clone()];
+  }
   cancelWalk() { this.walkToken++; this.walking = false; this.player.cancelAuto(); this.ui.walkHint(null); }
   walkTo(id: string): boolean {
     let scene: string, pos: THREE.Vector3 | null, stop = 1.5, label: string;
@@ -217,18 +291,22 @@ class Game {
     const done = () => { if (token !== this.walkToken) return; this.walking = false; this.ui.walkHint(null); this.ui.toast(label); };
     const next = () => {
       if (token !== this.walkToken) return;
-      if (this.current.id !== scene) {
-        if (this.current.indoor) {
-          const door = this.current.interactables.find((i) => i.action === 'door')!;
-          this.player.walkPath([door.pos.clone()], null, () => token === this.walkToken && this.go('bosque', next), 1.4);
-        } else {
-          const spot = this.forest.doors[scene], door = this.forest.interactables.find((i) => i.id === `puerta-${scene}`)!;
-          this.player.walkPath(this.forestPath(spot.pos), door.pos, () => token === this.walkToken && this.go(scene, next), 0.5);
-        }
+      const cur = this.current.id;
+      if (cur !== scene) {
+        // siguiente escena del recorrido: se baja hacia el destino o se sale hacia la escena madre
+        const chain: string[] = [];
+        for (let q: string | undefined = scene; q; q = PARENT[q]) chain.push(q);
+        const k = chain.indexOf(cur), hop = k > 0 ? chain[k - 1] : PARENT[cur];
+        let door: Interactable | undefined, at: THREE.Vector3 | undefined;
+        if (cur === 'bosque') { door = this.forest.interactables.find((i) => i.id === `puerta-${hop}`); at = this.forest.doors[hop]?.pos; }
+        else if (k > 0) { door = this.current.interactables.find((i) => i.id === 'trampilla'); at = door?.pos; this.trapOpen = true; }
+        else { door = this.current.interactables.find((i) => i.action === 'door' && i.target === hop); at = door?.pos; }
+        if (!door || !at || !this.scenes[hop]) { done(); return; }
+        this.player.walkPath(this.pathTo(at), door.pos, () => token === this.walkToken && this.go(hop, next), cur === 'bosque' ? 0.5 : 1.4);
         return;
       }
       if (!pos) { done(); return; }
-      this.player.walkPath(this.current.indoor ? [pos.clone()] : this.forestPath(pos), pos, done, stop);
+      this.player.walkPath(this.pathTo(pos), pos, done, stop);
     };
     next();
     return true;
@@ -245,6 +323,13 @@ class Game {
     this.player.apply(this.camera);
     this.current.update(dt, this.t, this.camera, this.renderer.domElement.height);
     this.pick();
+    // invitación: cuenta regresiva y autodestrucción
+    if (this.card && this.cardLeft! <= 0) this.expireCard();
+    this.ui.inventory(!!this.dungeon?.hasKey && !this.card, this.cardLeft);
+    if (this.dungeon && this.current === this.dungeon && this.started) {
+      const r = this.dungeon.roomAt(this.player.pos.x, this.player.pos.z);
+      if (r >= 0 && r !== this.lastRoom) { this.lastRoom = r; this.ui.toast(DUNGEON.rooms[r], `${DUNGEON.name} · cuarto ${r + 1} de 5`); }
+    }
     this.placeT -= dt;
     if (this.placeT <= 0 && !this.current.indoor && this.started) {
       this.placeT = 0.5;
@@ -314,6 +399,11 @@ class Game {
       },
       interact: () => g.interact(),
       walkTo: (id: string) => g.walkTo(id),
+      /** atajos de prueba: tomar la llave o la invitación sin apuntarles */
+      dungeonAct: (a: 'key' | 'card') => (a === 'key' ? g.dungeon?.takeKey() : g.dungeon?.takeCard()),
+      /** adelanta el reloj de la invitación (ms) */
+      advanceClock: (ms: number) => { g.clockOffset += ms; },
+      clearCard: () => { try { localStorage.removeItem(CARD_KEY); } catch { /* */ } g.card = null; g.trapOpen = false; g.dungeon?.reset(); },
       portraits: (v: number | null) => { f.portraits.force = v; if (v !== null) f.portraits.show = v; },
       state: () => {
         const room = g.current instanceof RoomScene ? g.current : null;
@@ -332,6 +422,12 @@ class Game {
           scenes: Object.fromEntries(Object.entries(g.scenes).map(([k, s]) => [k, s.interactables.map((i) => i.id)])),
           fire: f.fire.level, fireLight: f.fire.light?.intensity ?? 0, roomFire: room?.uFire.value ?? null, hearts: room?.hearts?.alive ?? 0,
           waterTime: f.water.shared.uTime.value, portraits: f.portraits.show,
+          dungeon: g.dungeon?.info() ?? null, room: g.dungeon && g.current === g.dungeon ? g.dungeon.roomAt(g.player.pos.x, g.player.pos.z) : -1,
+          trapOpen: g.trapOpen, card: g.card ? { leftMs: g.cardLeft } : null,
+          invitation: g.ui.invitationOpen ? document.querySelector('#invitation .card')!.textContent : null,
+          notice: g.ui.noticeOpen ? document.getElementById('notice-text')!.textContent : null,
+          found: document.getElementById('found')!.classList.contains('open') ? document.getElementById('found-title')!.textContent : null,
+          speed: g.player.speed,
           audio: g.audio.state(), errors: g.errors,
         };
       },

@@ -1,5 +1,5 @@
 // Interfaz: carga/inicio, HUD, lector de mensajes, mapa (M) y buscador (Ctrl+F).
-import { PLACES } from './content/ideas';
+import { INVITATION, PLACES } from './content/ideas';
 import { Geo } from './world/geo';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -8,7 +8,7 @@ const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,
 export interface SearchEntry { id: string; label: string; place: string; isPlace: boolean }
 
 export class UI {
-  readerOpen = false; mapOpen = false; searchOpen = false;
+  readerOpen = false; mapOpen = false; searchOpen = false; invitationOpen = false; noticeOpen = false;
   onPick: (e: SearchEntry) => void = () => {};
   onClose: () => void = () => {};
   private entries: SearchEntry[] = [];
@@ -33,7 +33,39 @@ export class UI {
     input.addEventListener('keyup', (e) => e.stopPropagation());
   }
 
-  get anyOpen() { return this.readerOpen || this.mapOpen || this.searchOpen; }
+  get anyOpen() { return this.readerOpen || this.mapOpen || this.searchOpen || this.invitationOpen || this.noticeOpen; }
+
+  // ---------------------------------------------------------------- mazmorra e invitación
+  private foundTimer = 0;
+  static clock(ms: number) {
+    const s = Math.max(0, Math.ceil(ms / 1000)), p = (n: number) => String(n).padStart(2, '0');
+    return `${Math.floor(s / 3600)}:${p(Math.floor((s % 3600) / 60))}:${p(s % 60)}`;
+  }
+  /** Cartel grande y pasajero ("You found it!"). */
+  showFound(title: string, sub: string) {
+    $('found-title').textContent = title; $('found-sub').textContent = sub; $('found').classList.add('open');
+    clearTimeout(this.foundTimer); this.foundTimer = window.setTimeout(() => $('found').classList.remove('open'), 5000);
+  }
+  /** Llave e invitación que lleva el jugador (cardMs = tiempo que le queda, o null). */
+  inventory(key: boolean, cardMs: number | null) {
+    $('inv-key').classList.toggle('on', key);
+    $('inv-card').classList.toggle('on', cardMs !== null);
+    if (cardMs !== null) { const t = UI.clock(cardMs); if ($('inv-time').textContent !== t) { $('inv-time').textContent = t; $('invitation-time').textContent = t; } }
+  }
+  openInvitation() {
+    $('invitation-body').textContent = INVITATION.body;
+    const lines = $('invitation-lines'); lines.innerHTML = '';
+    INVITATION.lines.forEach((l) => { lines.append(l, document.createElement('br')); });
+    $('invitation-closing').textContent = INVITATION.closing;
+    $('found').classList.remove('open');
+    $('invitation').classList.add('open'); this.invitationOpen = true;
+  }
+  closeInvitation() { $('invitation').classList.remove('open'); this.invitationOpen = false; this.onClose(); }
+  notice(text: string) {
+    $('notice-text').textContent = text; $('notice').classList.add('open'); this.noticeOpen = true;
+    $('notice-ok').onclick = () => this.closeNotice();
+  }
+  closeNotice() { $('notice').classList.remove('open'); this.noticeOpen = false; this.onClose(); }
 
   progress(p: number, text?: string) {
     ($('bar').firstElementChild as HTMLElement).style.width = `${Math.round(p * 100)}%`;

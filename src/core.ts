@@ -5,8 +5,13 @@ export interface Interactable {
   id: string;
   placeId: string;
   name: string;
-  /** read: abre el lector · door: cambia de escena */
-  action: 'read' | 'door';
+  /** read: abre el lector · door: cambia de escena · use: ejecuta onUse */
+  action: 'read' | 'door' | 'use';
+  /** texto del cartel (si no, se arma con el nombre) */
+  prompt?: string;
+  onUse?: () => void;
+  /** también se activa con click del mouse */
+  click?: boolean;
   message?: string;
   /** escena destino para action 'door' */
   target?: string;
@@ -28,7 +33,9 @@ export interface GameScene {
   /** posición de llegada viniendo desde otra escena (o null = inicio) */
   entry(from: string | null): { pos: THREE.Vector3; yaw: number };
   /** parámetros que usa el audio ambiente */
-  ambience?(cam: THREE.Vector3): { water: number; fire: number; cave: number };
+  ambience?(cam: THREE.Vector3): { water: number; fire: number; cave: number; drums?: number };
+  /** camino interno entre dos puntos (escenas con paredes) */
+  route?(from: THREE.Vector3, to: THREE.Vector3): THREE.Vector3[];
 }
 
 export type Circle = { x: number; z: number; r: number };

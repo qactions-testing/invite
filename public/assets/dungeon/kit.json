@@ -1,0 +1,21 @@
+{
+ "module": 2.0,
+ "height": 3.0,
+ "pieces": [
+  "wall",
+  "arch",
+  "floor",
+  "ceiling",
+  "stairs",
+  "door",
+  "torch",
+  "chest_base",
+  "chest_lid",
+  "key",
+  "pillar",
+  "pedestal",
+  "barrel",
+  "crate",
+  "candle"
+ ]
+}

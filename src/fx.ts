@@ -106,10 +106,11 @@ function drawCouple(): HTMLCanvasElement {
   };
 
   // ---- Agustina (izquierda): pelo morocho hasta el piso, vestido blanco tipo enagua de los 50
-  const ax = 370, floor = 985;
+  const ax = 370, ankle = 912;
   c.fillStyle = hair; c.beginPath();
-  c.moveTo(ax - 56, 250); c.bezierCurveTo(ax - 120, 420, ax - 135, 700, ax - 160, floor);
-  c.lineTo(ax + 150, floor); c.bezierCurveTo(ax + 130, 700, ax + 118, 420, ax + 56, 250);
+  // el pelo llega hasta los tobillos (no hasta el piso)
+  c.moveTo(ax - 56, 250); c.bezierCurveTo(ax - 112, 420, ax - 122, 700, ax - 128, ankle - 14);
+  c.quadraticCurveTo(ax, ankle + 16, ax + 122, ankle - 14); c.bezierCurveTo(ax + 118, 700, ax + 110, 420, ax + 56, 250);
   c.arc(ax, 250, 58, 0, Math.PI, true); c.fill();
   limb(ax - 22, 760, ax - 24, 935, 20, skin); limb(ax + 22, 760, ax + 24, 935, 20, skin);
   ell(ax - 28, 948, 22, 10, '#efe6d2'); ell(ax + 28, 948, 22, 10, '#efe6d2');

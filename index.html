@@ -44,6 +44,30 @@
     background: var(--shade); font-size: 15px; opacity: 0; transition: opacity 0.3s; }
   #walk.on { opacity: 1; }
 
+  #inv { position: absolute; right: 16px; top: 14px; display: flex; gap: 8px; pointer-events: auto; }
+  #inv > * { display: none; font: inherit; font-size: 15px; padding: 6px 14px; border-radius: 20px; background: var(--shade);
+    border: 1px solid rgba(226, 182, 90, 0.55); color: var(--paper); }
+  #inv > .on { display: inline-block; }
+  #inv-card { cursor: pointer; }
+  #found { pointer-events: none; text-align: center; z-index: 9; }
+  #found h1 { font-size: clamp(44px, 8vw, 96px); text-shadow: 0 0 40px rgba(255, 190, 80, 0.9), 0 4px 18px #000; }
+  #found p { font-size: clamp(18px, 2.4vw, 28px); font-style: italic; text-shadow: 0 2px 10px #000; margin: 6px 0 0; }
+  #invitation { background: rgba(10, 6, 3, 0.82); z-index: 20; }
+  #invitation .card { width: min(640px, 92vw); max-height: 96vh; overflow: auto; padding: clamp(18px, 4.5vh, 46px) clamp(22px, 5vw, 52px) clamp(14px, 3vh, 30px); text-align: center; color: #33261a;
+    background: radial-gradient(ellipse at 30% 15%, #f8f1e0, #f1e9d6 55%, #e6dbc0); border-radius: 3px; position: relative;
+    box-shadow: 0 40px 100px rgba(0, 0, 0, 0.8), inset 0 0 0 10px #f1e9d6, inset 0 0 0 11px rgba(120, 90, 40, 0.5), inset 0 0 70px rgba(120, 90, 40, 0.18); }
+  #invitation .body { font-size: clamp(14px, 2.9vh, 24px); line-height: 1.45; font-style: italic; margin: 0 0 2.4vh; }
+  #invitation .lines { font-size: clamp(12px, 2.3vh, 19px); line-height: 1.65; margin: 0 0 2.2vh; }
+  #invitation .closing { font-size: clamp(12px, 2.2vh, 18px); line-height: 1.45; margin: 0 0 2.2vh; }
+  #seal { width: clamp(54px, 11vh, 92px); height: clamp(54px, 11vh, 92px); margin: 0 auto 1.4vh; border-radius: 47% 53% 51% 49% / 52% 48% 53% 47%; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 36% 30%, #a3192a, #6d0d1a 62%, #4a0812); color: rgba(255, 215, 205, 0.55); font-size: clamp(15px, 3.2vh, 26px); font-weight: 700; letter-spacing: 1px;
+    box-shadow: 0 5px 12px rgba(40, 0, 6, 0.55), inset 0 0 0 7px rgba(60, 5, 12, 0.35), inset 0 3px 6px rgba(255, 170, 170, 0.25); }
+  #invitation .timer { font-size: 13px; color: #7a5a3a; letter-spacing: 0.06em; }
+  #notice { background: rgba(10, 6, 3, 0.78); z-index: 25; }
+  #notice .box { width: min(480px, 88vw); padding: 30px 34px; text-align: center; background: rgba(24, 16, 9, 0.97); border: 1px solid rgba(226, 182, 90, 0.6); border-radius: 12px; }
+  #notice p { font-size: 20px; line-height: 1.5; margin: 0 0 20px; }
+  #notice button { font: inherit; font-size: 17px; padding: 9px 30px; border-radius: 30px; cursor: pointer; border: 1px solid var(--gold); background: rgba(226, 182, 90, 0.16); color: #ffe9bd; }
+
   #fade { position: fixed; inset: 0; background: #0b0705; opacity: 0; pointer-events: none; z-index: 8; }
 
   #reader { background: rgba(10, 7, 4, 0.62); }
@@ -82,7 +106,8 @@
   <div id="prompt"></div>
   <div id="toast"></div>
   <div id="walk"></div>
-  <div id="hint"><kbd>WASD</kbd>/<kbd>↑↓←→</kbd> caminar · <kbd>E</kbd> leer · <kbd>M</kbd> mapa · <kbd>Ctrl</kbd>+<kbd>F</kbd> buscar</div>
+  <div id="inv"><span id="inv-key">🗝 Llave</span><button id="inv-card">✉ Invitación · <b id="inv-time"></b> · <kbd>I</kbd></button></div>
+  <div id="hint"><kbd>WASD</kbd>/<kbd>↑↓←→</kbd> caminar · <kbd>Shift</kbd> trotar · <kbd>E</kbd> leer · <kbd>M</kbd> mapa · <kbd>Ctrl</kbd>+<kbd>F</kbd> buscar</div>
 </div>
 <div id="fade"></div>
 
@@ -111,6 +136,22 @@
   </div>
 </div>
 
+<div id="found" class="layer"><div><h1 id="found-title"></h1><p id="found-sub"></p></div></div>
+
+<div id="invitation" class="layer" role="dialog" aria-modal="true">
+  <div class="card">
+    <p class="body" id="invitation-body"></p>
+    <p class="lines" id="invitation-lines"></p>
+    <p class="closing" id="invitation-closing"></p>
+    <div id="seal" aria-label="Sello de lacre rojo oscuro">A·G</div>
+    <div class="timer">Se autodestruye en <b id="invitation-time"></b> · <kbd>I</kbd> o <kbd>Esc</kbd> para guardarla</div>
+  </div>
+</div>
+
+<div id="notice" class="layer" role="alertdialog" aria-modal="true">
+  <div class="box"><p id="notice-text"></p><button id="notice-ok">Entendido</button></div>
+</div>
+
 <div id="loading" class="layer open">
   <h1>Invite</h1>
   <div class="sub" id="loading-text">Sembrando el bosque…</div>
@@ -122,9 +163,11 @@
   <button id="enter">Entrar al bosque</button>
   <div class="keys">
     <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> o flechas</span><span>caminar</span>
+    <span><kbd>Shift</kbd></span><span>trotar (3 m/s)</span>
     <span>mouse</span><span>mirar</span>
     <span><kbd>E</kbd></span><span>leer / entrar</span>
     <span><kbd>M</kbd></span><span>mapa del bosque</span>
+    <span><kbd>I</kbd></span><span>ver la invitación (cuando la tengas)</span>
     <span><kbd>Ctrl</kbd>+<kbd>F</kbd></span><span>buscar un objeto y caminar hasta él</span>
   </div>
 </div>

@@ -27,7 +27,9 @@ export class GameAudio {
   private nextBar = 0; private bar = 0; private nextBird = 0; private nextCrackle = 0; private nextDrip = 0;
   private melody: { inst: Wind; notes: [number, number, number][] } | null = null; // [compás, corchea, midi]
   private amb = { water: 0, fire: 0, cave: 0 }; private indoor = false;
-  private stats = { notes: 0, birdCalls: 0, windNotes: 0, banjoNotes: 0, bars: 0 };
+  private stats = { notes: 0, birdCalls: 0, windNotes: 0, banjoNotes: 0, bars: 0, drumHits: 0, fanfares: 0, sfx: 0 };
+  /** 0..1: cercanía a la invitación (bombos de ceremonia) */
+  drumLevel = 0;
   private timer = 0;
 
   start() {
@@ -184,6 +186,13 @@ export class GameAudio {
         if (inst === 'siku' && r() < 0.5) this.blow('siku', midi - 5, t0 + e * EIGHTH, len * EIGHTH * 0.7, 0.1); // quintas paralelas
       }
     }
+    // bombos de ceremonia: laten más fuerte cuanto más cerca está la invitación
+    const dl = this.drumLevel;
+    if (dl > 0.03) {
+      this.bombo(t0, 0.9 * dl); this.bombo(t0 + 3 * EIGHTH, 0.6 * dl);
+      if (dl > 0.35) { this.aro(t0 + 2 * EIGHTH, 0.5 * dl); this.aro(t0 + 5 * EIGHTH, 0.5 * dl); }
+      if (dl > 0.7) { this.bombo(t0 + 4.5 * EIGHTH, 0.45 * dl); this.bombo(t0 + 5.5 * EIGHTH, 0.55 * dl); }
+    }
     this.bar++; this.stats.bars++;
   }
 
@@ -249,6 +258,55 @@ export class GameAudio {
     }
   }
 
+  /** Bombo legüero: parche grave con caída de tono. */
+  private bombo(t: number, vel: number) {
+    const c = this.ctx!, o = c.createOscillator(), g = c.createGain();
+    o.frequency.setValueAtTime(105, t); o.frequency.exponentialRampToValueAtTime(44, t + 0.22);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0008, t + 0.75);
+    o.connect(g); g.connect(this.master); g.connect(this.reverbIn); o.start(t); o.stop(t + 0.8);
+    this.stats.drumHits++;
+  }
+  /** Golpe de palo en el aro. */
+  private aro(t: number, vel: number) {
+    const c = this.ctx!, o = c.createOscillator(), g = c.createGain();
+    o.type = 'triangle'; o.frequency.setValueAtTime(1150, t); o.frequency.exponentialRampToValueAtTime(700, t + 0.03);
+    g.gain.setValueAtTime(vel * 0.35, t); g.gain.exponentialRampToValueAtTime(0.0008, t + 0.07);
+    o.connect(g); g.connect(this.master); g.connect(this.reverbIn); o.start(t); o.stop(t + 0.09);
+  }
+  /** Trompetitas de victoria al tomar la invitación. */
+  fanfare() {
+    this.stats.fanfares++;
+    const c = this.ctx; if (!c || c.state !== 'running') return;
+    const t0 = c.currentTime + 0.05;
+    const blow = (midi: number, t: number, dur: number, vel: number) => {
+      const f = mtof(midi), lp = c.createBiquadFilter(), g = c.createGain();
+      lp.type = 'lowpass'; lp.Q.value = 2.5; lp.frequency.setValueAtTime(700, t); lp.frequency.linearRampToValueAtTime(3400, t + 0.05); lp.frequency.linearRampToValueAtTime(1900, t + dur);
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.03); g.gain.setValueAtTime(vel * 0.85, t + Math.max(0.04, dur - 0.06)); g.gain.linearRampToValueAtTime(0, t + dur + 0.05);
+      for (const det of [-5, 5]) { const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = det; o.connect(lp); o.start(t); o.stop(t + dur + 0.1); }
+      lp.connect(g); g.connect(this.master); g.connect(this.reverbIn);
+    };
+    // ta-ta-ta-TAAA · ta-TAAAA, a dos voces
+    [[67, 0, 0.13], [72, 0.16, 0.13], [76, 0.32, 0.13], [79, 0.48, 0.5], [76, 1.06, 0.13], [79, 1.22, 1.1]].forEach(([m, d, len]) => blow(m, t0 + d, len, 0.16));
+    [[64, 0.48, 0.5], [72, 1.22, 1.1], [76, 1.22, 1.1]].forEach(([m, d, len]) => blow(m, t0 + d, len, 0.1));
+  }
+  /** Efectos de la mazmorra. */
+  sfx(name: 'key' | 'door' | 'lock' | 'chest') {
+    this.stats.sfx++;
+    const c = this.ctx; if (!c || c.state !== 'running') return;
+    const t = c.currentTime + 0.02;
+    if (name === 'key') [[88, 0], [93, 0.07], [100, 0.14]].forEach(([m, d]) => this.chirp(t + d, 0.5, mtof(m), mtof(m), 0.12, this.master));
+    else if (name === 'lock') { this.aro(t, 0.9); this.bombo(t + 0.05, 0.35); }
+    else {
+      // crujido de madera: diente de sierra grave que se frena, y el golpe final
+      const o = c.createOscillator(), g = c.createGain(), lp = c.createBiquadFilter(), dur = name === 'door' ? 1.3 : 0.7;
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(name === 'door' ? 70 : 110, t); o.frequency.linearRampToValueAtTime(name === 'door' ? 38 : 60, t + dur);
+      lp.type = 'bandpass'; lp.frequency.value = 620; lp.Q.value = 3;
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.16, t + 0.08); g.gain.linearRampToValueAtTime(0, t + dur);
+      o.connect(lp); lp.connect(g); g.connect(this.master); g.connect(this.reverbIn); o.start(t); o.stop(t + dur + 0.05);
+      this.bombo(t + dur, 0.5);
+    }
+  }
+
   /** Campanita al abrir un mensaje. */
   chime() {
     const c = this.ctx; if (!c || c.state !== 'running') return;
@@ -256,8 +314,8 @@ export class GameAudio {
     [[81, 0], [88, 0.09]].forEach(([m, d]) => { const o = c.createOscillator(), g = c.createGain(); o.frequency.value = mtof(m); g.gain.setValueAtTime(0.12, t + d); g.gain.exponentialRampToValueAtTime(0.0008, t + d + 1.1); o.connect(g); g.connect(this.master); g.connect(this.reverbIn); o.start(t + d); o.stop(t + d + 1.2); });
   }
 
-  update(dt: number, cam: THREE.PerspectiveCamera, amb: { water: number; fire: number; cave: number }, indoor: boolean) {
-    this.amb = amb; this.indoor = indoor; this.listenerPos.copy(cam.position);
+  update(dt: number, cam: THREE.PerspectiveCamera, amb: { water: number; fire: number; cave: number; drums?: number }, indoor: boolean) {
+    this.amb = amb; this.drumLevel += ((amb.drums ?? 0) - this.drumLevel) * Math.min(1, dt * 2); this.indoor = indoor; this.listenerPos.copy(cam.position);
     const c = this.ctx;
     if (!c) return;
     const k = Math.min(1, dt * 3), now = c.currentTime, L = c.listener, f = cam.getWorldDirection(new THREE.Vector3());
@@ -271,10 +329,10 @@ export class GameAudio {
     this.windG.gain.value += ((muffled ? 0.012 : 0.045 + 0.02 * Math.sin(now * 0.31)) - this.windG.gain.value) * k;
     this.birdBus.gain.value += ((muffled ? 0.14 : 0.5) - this.birdBus.gain.value) * k;
     this.birdLp.frequency.value += ((muffled ? 1600 : 12000) - this.birdLp.frequency.value) * k;
-    this.music.gain.value += ((indoor ? 0.27 : 0.34) - this.music.gain.value) * k;
+    this.music.gain.value += ((this.drumLevel > 0.1 ? 0.17 : indoor ? 0.27 : 0.34) - this.music.gain.value) * k;
   }
 
   state() {
-    return { context: this.ctx?.state ?? 'none', sampleRate: this.ctx?.sampleRate ?? 0, ...this.stats, melody: this.melody?.inst ?? null, voices: this.ks.size };
+    return { context: this.ctx?.state ?? 'none', sampleRate: this.ctx?.sampleRate ?? 0, ...this.stats, drumLevel: this.drumLevel, melody: this.melody?.inst ?? null, voices: this.ks.size };
   }
 }

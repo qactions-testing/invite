@@ -13,7 +13,10 @@ const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 export class Player {
   pos = new THREE.Vector3();
   yaw = 0; pitch = 0;
-  readonly eye = 1.62; readonly speed = 1.0; readonly radius = 0.36;
+  readonly eye = 1.62; readonly radius = 0.36;
+  /** caminar: 1 m/s · trotar (Shift): 3 m/s */
+  readonly walkSpeed = 1.0; readonly runSpeed = 3.0;
+  get speed() { return this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? this.runSpeed : this.walkSpeed; }
   keys = new Set<string>();
   /** falso mientras hay un panel abierto */
   enabled = true;
