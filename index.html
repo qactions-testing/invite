@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Invite — Bosque del Cono Sur</title>
+<meta name="description" content="Un bosque del Cono Sur para caminar hasta encontrar una invitación." />
+<style>
+  :root { --paper: #f3e9d2; --ink: #3a2a1a; --gold: #e2b65a; --shade: rgba(18, 12, 6, 0.72); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #120c08; color: var(--paper);
+    font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif; }
+  #app canvas { display: block; width: 100vw; height: 100vh; }
+  .layer { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 10; }
+  .layer.open { display: flex; }
+
+  #start, #loading { display: flex; flex-direction: column; gap: 14px; text-align: center; padding: 24px;
+    background: radial-gradient(ellipse at 50% 30%, rgba(96, 58, 22, 0.55), rgba(10, 7, 4, 0.94)); z-index: 30; }
+  #start.hidden, #loading.hidden { display: none; }
+  h1 { font-weight: 500; font-size: clamp(30px, 5vw, 58px); letter-spacing: 0.04em; margin: 0; color: #ffe9bd;
+    text-shadow: 0 0 34px rgba(255, 170, 70, 0.5); }
+  .sub { font-style: italic; opacity: 0.86; font-size: clamp(15px, 1.8vw, 20px); max-width: 620px; }
+  #enter { font: inherit; font-size: 20px; padding: 12px 38px; border-radius: 40px; cursor: pointer; margin-top: 8px;
+    border: 1px solid var(--gold); background: rgba(226, 182, 90, 0.14); color: #ffe9bd; }
+  #enter:hover { background: rgba(226, 182, 90, 0.3); }
+  .keys { display: grid; grid-template-columns: auto auto; gap: 6px 16px; font-size: 15px; opacity: 0.9; text-align: left; margin-top: 10px; }
+  kbd { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; padding: 2px 7px; border-radius: 5px;
+    border: 1px solid rgba(243, 233, 210, 0.45); background: rgba(243, 233, 210, 0.1); }
+  #bar { width: min(340px, 70vw); height: 4px; background: rgba(243, 233, 210, 0.18); border-radius: 3px; overflow: hidden; }
+  #bar i { display: block; height: 100%; width: 0%; background: var(--gold); transition: width 0.25s; }
+
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px; border-radius: 50%;
+    background: rgba(255, 240, 210, 0.85); box-shadow: 0 0 8px rgba(0, 0, 0, 0.6); }
+  #prompt { position: absolute; left: 50%; top: calc(50% + 34px); transform: translateX(-50%); padding: 7px 16px; border-radius: 22px;
+    background: var(--shade); border: 1px solid rgba(226, 182, 90, 0.55); font-size: 16px; white-space: nowrap; opacity: 0; transition: opacity 0.2s; }
+  #prompt.on { opacity: 1; }
+  #toast { position: absolute; left: 50%; top: 9%; transform: translateX(-50%); font-size: clamp(22px, 3vw, 36px); font-style: italic;
+    color: #ffe9bd; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.9); opacity: 0; transition: opacity 0.9s; text-align: center; }
+  #toast.on { opacity: 1; }
+  #toast small { display: block; font-size: 0.5em; opacity: 0.85; letter-spacing: 0.08em; text-transform: uppercase; font-style: normal; }
+  #hint { position: absolute; left: 16px; bottom: 14px; font-size: 13px; opacity: 0.75; text-shadow: 0 1px 6px #000; }
+  #walk { position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); padding: 6px 16px; border-radius: 20px;
+    background: var(--shade); font-size: 15px; opacity: 0; transition: opacity 0.3s; }
+  #walk.on { opacity: 1; }
+
+  #fade { position: fixed; inset: 0; background: #0b0705; opacity: 0; pointer-events: none; z-index: 8; }
+
+  #reader { background: rgba(10, 7, 4, 0.55); backdrop-filter: blur(3px); }
+  #reader .page { width: min(560px, 88vw); max-height: 82vh; overflow: auto; padding: 38px 44px 30px; color: var(--ink); position: relative;
+    background: radial-gradient(ellipse at 30% 20%, #fbf3df, #ecdcb6 70%, #dcc594); border-radius: 4px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.65), inset 0 0 60px rgba(120, 80, 30, 0.25); }
+  #reader .place { font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; color: #8a5a22; }
+  #reader h2 { margin: 6px 0 16px; font-weight: 500; font-size: 30px; }
+  #reader p { font-size: 20px; line-height: 1.55; margin: 0 0 18px; white-space: pre-line; }
+  #reader .close { font-size: 13px; color: #7a6040; text-align: right; }
+
+  #map { background: rgba(10, 7, 4, 0.6); }
+  #map .sheet { position: relative; padding: 18px 22px; background: radial-gradient(ellipse at 40% 20%, #f7edd6, #e3cf9f); border-radius: 6px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.65); color: var(--ink); text-align: center; }
+  #map h3 { margin: 0 0 6px; font-weight: 500; font-size: 22px; }
+  #map canvas { display: block; height: min(78vh, 900px); width: auto; }
+  #map .legend { font-size: 13px; color: #6a5030; margin-top: 4px; }
+
+  #search { align-items: flex-start; padding-top: 12vh; background: rgba(10, 7, 4, 0.5); }
+  #search .box { width: min(560px, 90vw); background: rgba(24, 16, 9, 0.95); border: 1px solid rgba(226, 182, 90, 0.5);
+    border-radius: 12px; overflow: hidden; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.7); }
+  #search input { width: 100%; font: inherit; font-size: 20px; padding: 14px 18px; border: 0; outline: 0; background: transparent; color: var(--paper);
+    border-bottom: 1px solid rgba(226, 182, 90, 0.3); }
+  #results { list-style: none; margin: 0; padding: 6px; max-height: 52vh; overflow: auto; }
+  #results li { padding: 8px 12px; border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; gap: 12px; font-size: 17px; }
+  #results li small { opacity: 0.65; font-size: 13px; white-space: nowrap; }
+  #results li.sel { background: rgba(226, 182, 90, 0.22); }
+  #search .foot { font-size: 12.5px; opacity: 0.6; padding: 8px 14px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud">
+  <div id="crosshair"></div>
+  <div id="prompt"></div>
+  <div id="toast"></div>
+  <div id="walk"></div>
+  <div id="hint"><kbd>WASD</kbd>/<kbd>↑↓←→</kbd> caminar · <kbd>E</kbd> leer · <kbd>M</kbd> mapa · <kbd>Ctrl</kbd>+<kbd>F</kbd> buscar</div>
+</div>
+<div id="fade"></div>
+
+<div id="reader" class="layer" role="dialog" aria-modal="true">
+  <div class="page">
+    <div class="place" id="reader-place"></div>
+    <h2 id="reader-title"></h2>
+    <p id="reader-text"></p>
+    <div class="close"><kbd>E</kbd> o <kbd>Esc</kbd> para cerrar</div>
+  </div>
+</div>
+
+<div id="map" class="layer" role="dialog">
+  <div class="sheet">
+    <h3>Mapa del bosque</h3>
+    <canvas id="map-canvas" width="620" height="1240"></canvas>
+    <div class="legend">◆ lugares · ▲ vos · <kbd>M</kbd> para cerrar</div>
+  </div>
+</div>
+
+<div id="search" class="layer" role="dialog">
+  <div class="box">
+    <input id="search-input" type="text" placeholder="Buscar un objeto o lugar…" autocomplete="off" spellcheck="false" />
+    <ul id="results"></ul>
+    <div class="foot"><kbd>↑</kbd><kbd>↓</kbd> elegir · <kbd>Enter</kbd> caminar hasta ahí · <kbd>Esc</kbd> cerrar</div>
+  </div>
+</div>
+
+<div id="loading" class="layer open">
+  <h1>Invite</h1>
+  <div class="sub" id="loading-text">Sembrando el bosque…</div>
+  <div id="bar"><i></i></div>
+</div>
+<div id="start" class="layer hidden">
+  <h1>Bosque del Cono Sur</h1>
+  <div class="sub">Son las cinco de la tarde. En algún lugar de este bosque, una casita de gnomos guarda una invitación.</div>
+  <button id="enter">Entrar al bosque</button>
+  <div class="keys">
+    <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> o flechas</span><span>caminar</span>
+    <span>mouse</span><span>mirar</span>
+    <span><kbd>E</kbd></span><span>leer / entrar</span>
+    <span><kbd>M</kbd></span><span>mapa del bosque</span>
+    <span><kbd>Ctrl</kbd>+<kbd>F</kbd></span><span>buscar un objeto y caminar hasta él</span>
+  </div>
+</div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

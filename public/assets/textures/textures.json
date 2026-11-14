@@ -1,0 +1,53 @@
+{
+ "forest_leaves_02": {
+  "diffuse": "assets/textures/forest_leaves_02.webp"
+ },
+ "leafy_grass": {
+  "diffuse": "assets/textures/leafy_grass.webp"
+ },
+ "cliff_side": {
+  "diffuse": "assets/textures/cliff_side.webp"
+ },
+ "coast_sand_01": {
+  "diffuse": "assets/textures/coast_sand_01.webp"
+ },
+ "mossy_rock": {
+  "diffuse": "assets/textures/mossy_rock.webp"
+ },
+ "bark_brown_02": {
+  "diffuse": "assets/textures/bark_brown_02.webp"
+ },
+ "pine_bark": {
+  "diffuse": "assets/textures/pine_bark.webp"
+ },
+ "palm_tree_bark": {
+  "diffuse": "assets/textures/palm_tree_bark.webp"
+ },
+ "plank_flooring_02": {
+  "diffuse": "assets/textures/plank_flooring_02.webp"
+ },
+ "plastered_wall_04": {
+  "diffuse": "assets/textures/plastered_wall_04.webp"
+ },
+ "old_stone_wall": {
+  "diffuse": "assets/textures/old_stone_wall.webp"
+ },
+ "gingham_check": {
+  "diffuse": "assets/textures/gingham_check.webp"
+ },
+ "wood_table_001": {
+  "diffuse": "assets/textures/wood_table_001.webp"
+ },
+ "brown_planks_09": {
+  "diffuse": "assets/textures/brown_planks_09.webp"
+ },
+ "cobblestone_floor_04": {
+  "diffuse": "assets/textures/cobblestone_floor_04.webp"
+ },
+ "clay_roof_tiles_02": {
+  "diffuse": "assets/textures/clay_roof_tiles_02.webp"
+ },
+ "thatch_roof_angled": {
+  "diffuse": "assets/textures/thatch_roof_angled.webp"
+ }
+}

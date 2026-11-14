@@ -1,0 +1,27 @@
+{
+  "name": "invite",
+  "version": "1.0.0",
+  "description": "Invite its an interactive app for marriage invitations that allow the users to navigate in a 3D world to get to access to the invitation of the couple.",
+  "scripts": {
+    "test": "node --test tests/",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173 --strictPort",
+    "screenshots": "node tools/screenshots.mjs",
+    "assets": "node tools/fetch_polyhaven.mjs && node tools/build_outline.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qactions-testing/invite.git"
+  },
+  "private": true,
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.170.0",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21"
+  },
+  "type": "module"
+}
