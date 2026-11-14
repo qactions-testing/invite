@@ -1,9 +1,30 @@
 [
  {
+  "id": "estanque",
+  "title": "Estanque de los Peces",
+  "file": "estanque.png",
+  "mean": 92.3,
+  "std": 40.8
+ },
+ {
+  "id": "fogata",
+  "title": "Fogata de los Novios",
+  "file": "fogata.png",
+  "mean": 138.4,
+  "std": 56.5
+ },
+ {
+  "id": "bosque",
+  "title": "El bosque desde el punto de partida",
+  "file": "bosque.png",
+  "mean": 103.9,
+  "std": 46.1
+ },
+ {
   "id": "mapa",
   "title": "Mapa del bosque (tecla M)",
   "file": "mapa.png",
-  "mean": 150.3,
-  "std": 52.3
+  "mean": 120,
+  "std": 61.1
  }
 ]

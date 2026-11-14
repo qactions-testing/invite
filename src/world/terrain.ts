@@ -11,6 +11,8 @@ export class Terrain {
   clear: Float32Array;
   /** 1 = sin vegetación alguna (agua, construcciones, piso de la cueva) */
   bare: Uint8Array;
+  /** 0..1 lecho de laguna (arena clara bajo el agua) */
+  wet: Float32Array;
   mesh!: THREE.Mesh;
   private noise = new Noise(7);
 
@@ -19,6 +21,7 @@ export class Terrain {
     this.H = new Float32Array(w * h);
     this.clear = new Float32Array(w * h);
     this.bare = new Uint8Array(w * h);
+    this.wet = new Float32Array(w * h);
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) this.H[j * w + i] = this.base(geo.x0 + i, geo.z0 + j);
     this.carveRivers();
   }
@@ -109,6 +112,7 @@ export class Terrain {
     this.disk(x, z, r + 1.2, (c, d) => {
       const t = smoothstep(r + 1.2, r - 1.5, d);
       this.H[c] = lerp(ground, level - depth * (0.35 + 0.65 * smoothstep(r, 0, d)), t);
+      this.wet[c] = Math.max(this.wet[c], t);
     });
     return level;
   }
@@ -137,7 +141,7 @@ export class Terrain {
       const slope = Math.hypot(hx, hz) * 0.5;
       const sd = g.sdf[c], rsd = g.riverSd[c];
       const b = g.biome(x, z);
-      let sand = Math.max(smoothstep(2.6, 0.2, sd), smoothstep(1.6, -0.2, rsd), b.zone === 'atacama' ? 0.75 : 0, b.zone === 'estepa' ? 0.25 : 0);
+      let sand = Math.max(smoothstep(2.6, 0.2, sd), smoothstep(1.6, -0.2, rsd), this.wet[c], b.zone === 'atacama' ? 0.75 : 0, b.zone === 'estepa' ? 0.25 : 0);
       let rock = Math.max(smoothstep(0.5, 0.95, slope), smoothstep(7, 11, y) * 0.8);
       rock = clamp(rock, 0, 1) * (1 - sand * 0.6);
       const open = Math.max(this.clear[c], 1 - smoothstep(0.45, 1.0, b.density + 0.25 * n.n(x * 0.05, z * 0.05)));

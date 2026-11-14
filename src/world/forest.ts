@@ -183,7 +183,7 @@ export class ForestScene implements GameScene {
     const fg = new THREE.BufferGeometry();
     fg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); fg.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
     const n = 30, orb = new Float32Array(n * 4), col = new Float32Array(n * 3), size = new Float32Array(n);
-    const pal = [[1.0, 0.55, 0.08], [1.0, 0.78, 0.2], [0.8, 0.84, 0.9], [0.95, 0.28, 0.08], [0.42, 0.34, 0.26], [1.0, 0.9, 0.75]];
+    const pal = [[1.0, 0.4, 0.02], [1.0, 0.66, 0.08], [0.5, 0.58, 0.68], [0.85, 0.12, 0.03], [0.16, 0.13, 0.1], [0.9, 0.82, 0.62]];
     for (let i = 0; i < n; i++) {
       orb.set([rr(rng, 1.3, r - 1.8), rr(rng, 0.35, 0.8) * (i % 6 === 0 ? -1 : 1), rng() * TAU, -rr(rng, 0.14, 0.42)], i * 4);
       col.set(pal[i % pal.length], i * 3); size[i] = rr(rng, 0.6, 1.05);

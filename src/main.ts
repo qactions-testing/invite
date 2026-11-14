@@ -16,6 +16,8 @@ import { GameAudio } from './audio';
 const params = new URLSearchParams(location.search);
 const QUALITY: 'low' | 'high' = params.get('quality') === 'low' ? 'low' : 'high';
 const ROOMS = ['cana', 'abuelas', 'gnomos'];
+// en tests y capturas (autostart) la calidad no se ajusta sola
+const ADAPTIVE = QUALITY === 'high' && !params.has('autostart');
 
 class Game {
   renderer!: THREE.WebGLRenderer;
@@ -261,7 +263,19 @@ class Game {
     this.last = now;
     if (this.manual) return;
     this.update(dt); this.render();
+    // calidad adaptativa: si el equipo no llega a ~24 fps, baja resolución y luego sombras/bloom
+    if (ADAPTIVE && this.started && this.perf.level < 2) {
+      const p = this.perf;
+      p.ema = p.n ? p.ema * 0.95 + dt * 0.05 : dt;
+      if (++p.n > 150 && p.ema > 0.042) { p.level++; p.n = 0; this.degrade(p.level); }
+    }
   };
+  private perf = { ema: 0, n: 0, level: 0 };
+  private degrade(level: number) {
+    if (level === 1) { this.renderer.setPixelRatio(1); this.composer?.setPixelRatio(1); }
+    else { this.forest.atmo.light.castShadow = false; this.composer = null; }
+    console.info(`[invite] calidad reducida (nivel ${level}) para sostener la fluidez`);
+  }
 
   // ---------------------------------------------------------------- ganchos de test
   debug() {

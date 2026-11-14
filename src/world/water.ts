@@ -168,7 +168,7 @@ export class Water {
     g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     g.setAttribute('aDepth', new THREE.Float32BufferAttribute(dep, 1));
     g.setIndex(idx);
-    const mesh = new THREE.Mesh(g, this.material({ mode: 'pond', deep: 0x124a44, shallow: 0x7fc4a8, opacity: [0.14, 0.42] }));
+    const mesh = new THREE.Mesh(g, this.material({ mode: 'pond', deep: 0x0f3f3a, shallow: 0x6fb89c, opacity: [0.2, 0.5] }));
     mesh.position.set(x, y, z); mesh.renderOrder = 3; mesh.name = 'laguna';
     return mesh;
   }

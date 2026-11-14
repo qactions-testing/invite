@@ -7,7 +7,7 @@ import { ROOT, serve, openGame, frameStats } from './harness.mjs';
 
 /** Cada toma: id, título y el JS que acomoda la cámara (corre con `I = window.__invite`). */
 export const SHOTS = [
-  { id: 'estanque', title: 'Estanque de los Peces', js: `I.teleport('estanque', 12.5); I.look(I.state().yaw, -0.2); I.step(1.5);` },
+  { id: 'estanque', title: 'Estanque de los Peces', js: `I.teleport('estanque', 10.4); I.look(I.state().yaw, -0.3); I.step(2);` },
   { id: 'fogata', title: 'Fogata de los Novios', js: `I.teleport('fogata', 5.6, 1.5); I.portraits(1); I.look(I.state().yaw, 0.03); I.step(1.5);` },
   { id: 'cueva', title: 'Cueva de las Amatistas', js: `const p = I.state().places.find((q) => q.id === 'cueva'); I.teleport({ x: p.x + 2.6, z: p.z + 0.5, yaw: 1.42, scene: 'bosque' }); I.look(1.42, 0.2); I.step(1.5);` },
   { id: 'cana', title: 'Corazón de la Caña Fístula', js: `I.teleport('cana'); I.teleport({ x: -0.9, z: 2.0, yaw: -0.42 }); I.look(-0.42, -0.1); I.step(1.5);` },
