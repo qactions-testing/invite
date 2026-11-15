@@ -102,3 +102,13 @@ test('textos: tronco de Gonzalo y menú de inicio', async () => {
   assert.ok(!keys.join(' ').includes('o Leer'));
   assert.deepEqual(errors, []);
 });
+
+test('la entrada de la Caña Fístula es una abertura oscura en el tronco y lleva adentro', async () => {
+  await page.evaluate(() => { const X = window.__invite; X.teleport('puerta-cana', 3); X.step(0.05); X.lookAt('puerta-cana'); X.step(0.2); });
+  assert.equal((await S()).hover, 'puerta-cana');
+  assert.equal(await page.evaluate(() => { let n = null; window.__invite && document; return true; }), true);
+  await page.keyboard.press('e');
+  await page.evaluate(() => window.__invite.step(1.2));
+  assert.equal((await S()).scene, 'cana');
+  await page.evaluate(() => window.__invite.teleport('fogata', 6, 1.5));
+});

@@ -86,3 +86,34 @@ test('pocas luces puntuales encendidas a la vez, también en la mazmorra', async
   await page.evaluate(() => window.__invite.teleport('fogata', 6, 1.5));
   assert.deepEqual(errors, []);
 });
+
+test('en PC la rueda del mouse y +/- hacen zoom; las pistas lo explican', async () => {
+  await page.evaluate(() => { const X = window.__invite; X.teleport('fogata', 6, 1.5); X.setFov(68); X.step(0.05); });
+  const fov = async () => (await S()).fov;
+  const box = await page.locator('#app canvas').boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -400); await page.waitForTimeout(100);
+  const a = await fov();
+  assert.ok(a < 60, `rueda hacia adelante acerca (fov ${a.toFixed(1)})`);
+  await page.mouse.wheel(0, 400); await page.waitForTimeout(100);
+  assert.ok((await fov()) > a + 5, 'rueda hacia atrás aleja');
+  await page.evaluate(() => window.__invite.setFov(68));
+  await page.keyboard.press('+'); await page.keyboard.press('+');
+  const b = await fov();
+  assert.ok(b < 60, `+ acerca (fov ${b.toFixed(1)})`);
+  await page.keyboard.press('-'); await page.keyboard.press('-'); await page.keyboard.press('-');
+  assert.ok((await fov()) > b + 10, '- aleja');
+  await page.evaluate(() => window.__invite.setFov(68));
+  const hint = await page.innerText('#hint');
+  assert.match(hint, /Esc\s*Mostrar cursor/); assert.match(hint, /\+\/-\s*zoom/);
+});
+
+test('el chisporroteo del fuego es más espaciado y bajo', async () => {
+  await page.evaluate(() => { const X = window.__invite; X.teleport('fogata', 3, 1.5); X.manual(false); });
+  const c0 = (await S()).audio.crackles, t0 = Date.now();
+  await page.waitForTimeout(6000);
+  const n = (await S()).audio.crackles - c0, secs = (Date.now() - t0) / 1000;
+  await page.evaluate(() => window.__invite.manual(true));
+  assert.ok(n > 0, 'suena');
+  assert.ok(n / secs < 1 / 0.2, `${(n / secs).toFixed(1)} chasquidos por segundo (antes ~5,5)`);
+});

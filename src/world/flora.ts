@@ -614,6 +614,7 @@ totalEmissiveRadiance += diffuseColor.rgb * uSunCol * (0.03 + 0.5 * back);`);
     const tg = genTree(S, mulberry32(seed));
     const g = new THREE.Group();
     const wood = new THREE.Mesh(tg.wood, this.woodMats[S.bark]), leaf = new THREE.Mesh(tg.leaf, this.leafMat);
+    wood.name = 'tronco'; leaf.name = 'copa';
     wood.castShadow = leaf.castShadow = wood.receiveShadow = true; leaf.customDepthMaterial = this.depthMat;
     g.add(wood, leaf); g.scale.setScalar(scale);
     g.userData.radius = tg.radius * scale; g.userData.height = tg.height * scale;

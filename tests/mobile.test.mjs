@@ -116,9 +116,12 @@ test('tocar un objeto abre su mensaje; los paneles se cierran con un toque', asy
   assert.ok((await S()).reader, 'Leer abre el mensaje');
   await settle(); await tapSel('#tbtns [data-a=close]');
   assert.equal((await S()).reader, null, 'Cerrar cierra el lector');
-  // mapa
+  // mapa: en vertical entra entero en la pantalla, sin cortarse arriba ni abajo
   await tapSel('#tbtns [data-a=map]');
   assert.equal((await S()).map, true);
+  const sheet = await box('#map .sheet');
+  assert.ok(sheet.y >= 0 && sheet.y + sheet.h <= 844, `la hoja entra (${sheet.y.toFixed(0)}–${(sheet.y + sheet.h).toFixed(0)})`);
+  assert.equal(await I(() => getComputedStyle(document.getElementById('stick')).display), 'none', 'controles ocultos al abrir el mapa');
   await settle(); await tap(195, 18); // fuera de la hoja (tocar un lugar del mapa viaja)
   assert.equal((await S()).map, false, 'un toque cierra el mapa');
   assert.equal((await S()).travelling, false, 'cerrar no viaja');
@@ -172,8 +175,15 @@ test('en horizontal los controles entran en pantalla y siguen funcionando', asyn
   assert.ok(Math.abs(d - 3) < 0.15, `caminó ${d.toFixed(2)} m en 1 s`);
   await tapSel('#tbtns [data-a=map]');
   assert.equal((await S()).map, true);
-  const map = await box('#map .sheet');
-  assert.ok(map.y >= 0 && map.y + map.h <= 390, 'el mapa entra en la pantalla horizontal');
+  // horizontal: el mapa es grande y se desplaza de arriba hacia abajo, abierto en la posición del jugador
+  const cv = await box('#map-canvas');
+  assert.ok(cv.w >= 500, `mapa grande (${cv.w.toFixed(0)} px de ancho)`);
+  const sc = await I(() => { const m = document.getElementById('map'); return { sh: m.scrollHeight, ch: m.clientHeight }; });
+  assert.ok(sc.sh > sc.ch * 2, 'se puede desplazar');
+  await I(() => { document.getElementById('map').scrollTop = 99999; });
+  assert.ok((await I(() => document.getElementById('map').scrollTop)) > 300, 'baja hasta el sur');
+  const gn = await I(() => window.__invite.mapPoint('gnomos'));
+  assert.ok(gn.y > 0 && gn.y < 390, 'desplazado, la Casita de Gnomos queda a la vista');
   await settle(); await tap(60, 60); // fuera de la hoja
   assert.equal((await S()).map, false);
   await page.setViewportSize({ width: 390, height: 844 });

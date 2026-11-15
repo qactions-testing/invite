@@ -171,6 +171,7 @@ export class Portraits {
   /** si no es null, fuerza la visibilidad (tests / capturas) */
   force: number | null = null;
   private uni = { uTime: { value: 0 }, uShow: { value: 0 }, tMap: { value: null as THREE.Texture | null } };
+  private wp = new THREE.Vector3();
 
   constructor(size = 2.6) {
     const tex = new THREE.CanvasTexture(drawCouple());
@@ -201,7 +202,7 @@ void main() {
     const target = this.force ?? (ph < 0.72 ? 1 : 0);
     this.show += (target - this.show) * Math.min(1, dt * 0.9);
     this.uni.uShow.value = this.show;
-    const p = this.mesh.getWorldPosition(new THREE.Vector3());
+    const p = this.mesh.getWorldPosition(this.wp);
     this.mesh.rotation.y = Math.atan2(cam.x - p.x, cam.z - p.z);
   }
 }

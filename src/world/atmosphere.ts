@@ -172,6 +172,7 @@ export class Birds {
   kinds: string[] = [];
   private b: { ax: number; az: number; alt: number; rx: number; rz: number; w: number; ph: number; k: BirdKind; follow: boolean; ox: number; oz: number }[] = [];
   private uTime = { value: 0 };
+  private tmp = { m: new THREE.Matrix4(), p: new THREE.Vector3(), q: new THREE.Quaternion(), s: new THREE.Vector3(), e: new THREE.Euler() };
 
   constructor(private geo: Geo, count: number, sunDir: THREE.Vector3, sunColor: THREE.Color, fogColor: THREE.Color) {
     const rng = mulberry32(31);
@@ -254,7 +255,8 @@ void main() {
 
   update(dt: number, t: number, cam: THREE.Vector3) {
     this.uTime.value = t;
-    const m = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3(), e = new THREE.Euler();
+    // objetos reutilizados: nada se crea en cada cuadro (menos recolección de basura, menos tirones)
+    const { m, p, q, s, e } = this.tmp;
     this.b.forEach((b, i) => {
       if (b.follow) { const k = Math.min(1, dt * 0.12); b.ax += (cam.x + b.ox - b.ax) * k; b.az += (cam.z + b.oz - b.az) * k; }
       const th = b.ph + t * b.w, c = Math.cos(th), sn = Math.sin(th);

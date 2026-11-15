@@ -172,6 +172,9 @@ class Game {
       }
       if (!this.started || this.ui.searchOpen || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.code === 'KeyM') { this.toggleMap(); return; }
+      // zoom: + acerca, - aleja (también el teclado numérico y "=" donde + necesita Shift)
+      if (!this.ui.anyOpen && (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd')) { e.preventDefault(); this.zoom(1 / 1.12); return; }
+      if (!this.ui.anyOpen && (e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract')) { e.preventDefault(); this.zoom(1.12); return; }
       if (e.code === 'Escape') { this.closePanels(); return; }
       if (e.code === 'KeyI') { this.ui.invitationOpen ? this.ui.closeInvitation() : this.showCard(); return; }
       if (e.code === 'KeyE' && !e.repeat) { this.interact(); return; }
@@ -185,6 +188,12 @@ class Game {
     addEventListener('blur', () => this.player.keys.clear());
     cv.addEventListener('mousedown', () => { this.drag = true; if (this.started && !this.ui.anyOpen && this.hover?.click) this.interact(); if (this.started && !this.ui.anyOpen && document.pointerLockElement !== cv) this.lock(); });
     addEventListener('mouseup', () => { this.drag = false; });
+    // rueda del mouse: zoom (hacia adelante acerca)
+    cv.addEventListener('wheel', (e) => {
+      if (!this.started || this.ui.anyOpen) return;
+      e.preventDefault();
+      this.zoom(Math.pow(1.0015, THREE.MathUtils.clamp(e.deltaY, -200, 200)));
+    }, { passive: false });
     addEventListener('mousemove', (e) => {
       if (!this.started || this.ui.anyOpen || this.travelling) return;
       if (document.pointerLockElement === cv || this.drag) this.player.look(e.movementX, e.movementY);
@@ -206,11 +215,17 @@ class Game {
     this.ui.readerOpen && this.ui.closeReader(); this.ui.mapOpen && this.ui.closeMap();
     document.exitPointerLock?.(); this.player.keys.clear(); this.player.enabled = false;
     this.ui.openSearch();
+    this.syncPanels();
   }
   /** Esc: cierra el panel abierto */
   closePanels() {
     this.ui.readerOpen && this.ui.closeReader(); this.ui.mapOpen && this.ui.closeMap(); this.ui.searchOpen && this.ui.closeSearch();
     this.ui.invitationOpen && this.ui.closeInvitation(); this.ui.noticeOpen && this.ui.closeNotice();
+  }
+  /** Zoom de la cámara (FOV): k > 1 aleja, k < 1 acerca. Rueda, +/- y pellizco. */
+  zoom(k: number) {
+    this.camera.fov = THREE.MathUtils.clamp(this.camera.fov * k, FOV.min, FOV.max);
+    this.camera.updateProjectionMatrix();
   }
   /** botón Cerrar (táctil) */
   closeAll() { this.closePanels(); }
@@ -303,7 +318,10 @@ class Game {
   }
 
   // ---------------------------------------------------------------- interacción
+  private pickTick = 0;
   private pick() {
+    // qué se está mirando: cada 2 cuadros alcanza (30 veces por segundo) y ahorra el rayo contra todos los objetos
+    if (!this.manual && (this.pickTick++ & 1) && !this.ui.anyOpen && !this.trans) return;
     this.hover = null;
     if (this.started && !this.ui.anyOpen && !this.trans) {
       const list = this.current.interactables, dir = this.camera.getWorldDirection(this.tmpB);
@@ -342,6 +360,7 @@ class Game {
       const place = PLACES.find((p) => p.id === h.placeId)!;
       this.player.enabled = false; this.player.keys.clear();
       this.ui.openReader(place.name, h.name, h.message ?? '');
+      this.syncPanels();
       this.audio.chime();
       if (h.id === 'trampilla') this.trapPending = true;
     } else if (h.target) this.go(h.target);
@@ -370,6 +389,7 @@ class Game {
     document.exitPointerLock?.();
     this.ui.inventory(false, this.cardLeft);
     this.ui.openInvitation();
+    this.syncPanels();
   }
   private expireCard() {
     this.card = null;
@@ -390,6 +410,7 @@ class Game {
     // dentro de una sala, el marcador queda en su puerta
     const door = this.current.indoor ? f.doors[this.current.id] : null;
     const px = door ? door.pos.x : this.player.pos.x, pz = door ? door.pos.z : this.player.pos.z;
+    queueMicrotask(() => this.syncPanels());
     this.ui.openMap((c, w, h) => drawMap(c, w, h, f.geo, PLACES.map((p) => ({ id: p.id, name: p.name, kind: p.kind, ...f.placePos[p.id] })), px, pz, this.player.yaw));
   }
 
@@ -539,6 +560,8 @@ class Game {
   render() { if (this.composer) this.composer.render(); else this.renderer.render(this.current.scene, this.camera); }
   private frame = (now: number) => {
     requestAnimationFrame(this.frame);
+    // tope de 60 cuadros por segundo: en monitores de 120/144 Hz dibujar más no se ve mejor y le exige el doble a la GPU
+    if (!this.manual && now - this.last < 1000 / 62) return;
     const raw = (now - this.last) / 1000, dt = Math.min(0.05, raw);
     this.last = now;
     if (this.manual) return;
@@ -596,6 +619,7 @@ class Game {
         return true;
       },
       setQuality: (l: Level) => g.applyQuality(l),
+      setFov: (f: number) => { g.camera.fov = f; g.camera.updateProjectionMatrix(); },
       /** Lo que cuesta dibujar un cuadro (vista + sombras). `old`: como antes de las parcelas. */
       renderCost: (old: boolean | 'sin-flora' = false) => {
         if (old === 'sin-flora') f.flora.group.visible = false;

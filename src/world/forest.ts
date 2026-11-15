@@ -326,14 +326,55 @@ void main() {
     const tree = this.flora.single(spec, 2027, 2.0);
     tree.position.set(x, this.y(x, z), z); this.scene.add(tree);
     this.solid(x, z, 2.5);
-    const d = this.door(lib, 1.25, 2.15, 0xc9a070, true);
+    // entrada: una abertura oscura en el tronco (no una puerta), pegada a la corteza
+    const d = new THREE.Group();
     const out = this.face(d, x, z, sx, sz);
     d.position.addScaledVector(out, 2.42);
-    const pane = this.warmPane(0.7, 0.7); pane.position.set(0, 3.2, 0.12); d.add(pane);
-    const glow = new THREE.PointLight(0xffb060, 9, 9, 1.8); glow.position.set(0, 2.6, 0.9); d.add(glow);
     for (let i = 0; i < 2; i++) { const st = this.rock(0.55, 120 + i, 0.25); st.position.set(0, 0.02, 0.6 + i * 0.75); d.add(st); }
     this.scene.add(d);
-    this.addDoor('cana', d, d.position.clone().add(new V3(0, 1.2, 0)), out);
+    const hollow = this.trunkHollow(tree, x, this.y(x, z), z, out, 1.05, 2.55);
+    this.scene.add(hollow);
+    this.addDoor('cana', hollow, d.position.clone().add(new V3(0, 1.2, 0)), out);
+  }
+
+  /**
+   * Abertura negra en un tronco: una malla que copia la superficie de la corteza (se proyecta cada punto
+   * sobre el tronco con rayos) y una textura de hueco profundo con bordes irregulares y la madera viva del borde.
+   */
+  private trunkHollow(tree: THREE.Object3D, cx: number, cy: number, cz: number, out: THREE.Vector3, w: number, h: number): THREE.Mesh {
+    const [cv, c] = makeCanvas(256, 512), rng = mulberry32(915);
+    // contorno: alto y angosto, más ancho abajo, con bordes de corteza irregulares
+    const pts: [number, number][] = [];
+    const N = 64;
+    for (let i = 0; i <= N; i++) {
+      const t = i / N, y = 500 - t * 480;                       // de abajo hacia arriba
+      const half = 98 * Math.pow(Math.sin(Math.min(1, (1 - t) * 1.05) * Math.PI / 2), 0.55) * (0.82 + 0.18 * (1 - t));
+      pts.push([128 + half + (rng() - 0.5) * 9, y]);
+    }
+    for (let i = N; i >= 0; i--) { const [px, py] = pts[i]; pts.push([256 - px + (rng() - 0.5) * 9, py]); }
+    const path = () => { c.beginPath(); pts.forEach(([px, py], i) => (i ? c.lineTo(px, py) : c.moveTo(px, py))); c.closePath(); };
+    // el hueco: negro profundo cuyo borde se desvanece directo en la corteza (sin borde de madera)
+    c.save(); c.filter = 'blur(9px)'; path(); c.fillStyle = 'rgba(4, 3, 2, 0.92)'; c.fill(); c.restore();
+    c.save(); c.filter = 'blur(3px)'; c.translate(128, 260); c.scale(0.86, 0.94); c.translate(-128, -260); path(); c.fillStyle = '#000'; c.fill(); c.restore();
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+
+    // malla que sigue la corteza
+    const cols = 12, rows = 24, geo = new THREE.PlaneGeometry(w, h, cols, rows), pos = geo.getAttribute('position');
+    const tangent = new V3(out.z, 0, -out.x), ray = new THREE.Raycaster(), o = new V3(), dir = out.clone().negate();
+    tree.updateMatrixWorld(true);
+    const targets: THREE.Object3D[] = []; tree.traverse((m) => { if ((m as THREE.Mesh).isMesh && m.name !== 'copa') targets.push(m); });
+    for (let i = 0; i < pos.count; i++) {
+      const lx = pos.getX(i), ly = pos.getY(i) + h / 2 + 0.02;
+      o.set(cx, cy + ly, cz).addScaledVector(tangent, lx).addScaledVector(out, 6);
+      ray.set(o, dir); ray.far = 8;
+      const hit = ray.intersectObjects(targets, false)[0];
+      const p = hit ? hit.point.addScaledVector(out, 0.025) : new V3(cx, cy + ly, cz).addScaledVector(tangent, lx).addScaledVector(out, 2.42);
+      pos.setXYZ(i, p.x, p.y, p.z);
+    }
+    geo.computeVertexNormals();
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.05, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }));
+    m.name = 'hueco-cana'; m.renderOrder = 2;
+    return m;
   }
 
   private buildCottage(lib: TexLib, sx: number, sz: number) {

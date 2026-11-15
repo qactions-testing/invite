@@ -146,10 +146,17 @@ export class UI {
   }
   closeReader() { $('reader').classList.remove('open'); this.readerOpen = false; this.onClose(); }
 
-  openMap(draw: (c: CanvasRenderingContext2D, w: number, h: number) => MapHit[]) {
+  openMap(draw: (c: CanvasRenderingContext2D, w: number, h: number) => MapDrawn) {
     const cv = $<HTMLCanvasElement>('map-canvas');
-    this.mapHits = draw(cv.getContext('2d')!, cv.width, cv.height);
+    const drawn = draw(cv.getContext('2d')!, cv.width, cv.height);
+    this.mapHits = drawn.hits;
     $('map').classList.add('open'); this.mapOpen = true; this.openedAt = performance.now();
+    // si el mapa no entra en pantalla (celular en horizontal) se abre centrado en el jugador
+    const layer = $('map');
+    if (layer.scrollHeight > layer.clientHeight + 4) {
+      const r = cv.getBoundingClientRect(), y = r.top + layer.scrollTop + (drawn.me.y * r.height) / cv.height;
+      layer.scrollTop = Math.max(0, y - layer.clientHeight / 2);
+    } else layer.scrollTop = 0;
   }
   closeMap() { $('map').classList.remove('open'); this.mapOpen = false; this.onClose(); }
 
@@ -185,9 +192,10 @@ export class UI {
 export interface MapPlace { id: string; name: string; x: number; z: number; kind: string }
 /** Zona tocable de un lugar en el mapa (coordenadas del canvas): rombo en (x, y) y rótulo. */
 export interface MapHit { id: string; x: number; y: number; lx: number; ly: number; lw: number; lh: number }
+export interface MapDrawn { hits: MapHit[]; me: { x: number; y: number } }
 
 /** Dibuja el mapa del bosque con la forma del Cono Sur. Devuelve las zonas tocables de cada lugar. */
-export function drawMap(c: CanvasRenderingContext2D, W: number, H: number, geo: Geo, places: MapPlace[], px: number, pz: number, yaw: number): MapHit[] {
+export function drawMap(c: CanvasRenderingContext2D, W: number, H: number, geo: Geo, places: MapPlace[], px: number, pz: number, yaw: number): MapDrawn {
   const hits: MapHit[] = [];
   const b = geo.bounds, pad = 34;
   const s = Math.min((W - pad * 2) / (b.maxX - b.minX), (H - pad * 2) / (b.maxZ - b.minZ));
@@ -256,5 +264,5 @@ export function drawMap(c: CanvasRenderingContext2D, W: number, H: number, geo: 
   c.fillText('N', W - 44, 46); c.beginPath(); c.moveTo(W - 44, 54); c.lineTo(W - 35, 80); c.lineTo(W - 53, 80); c.closePath(); c.fill();
   c.strokeStyle = '#3a2a1a'; c.lineWidth = 3; c.beginPath(); c.moveTo(28, H - 30); c.lineTo(28 + 100 * s, H - 30); c.stroke();
   c.textAlign = 'left'; c.font = '20px Georgia, serif'; c.fillText('100 m ≈ 33 s a pie', 28, H - 42);
-  return hits;
+  return { hits, me: { x: X(px), y: Z(pz) } };
 }

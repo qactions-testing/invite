@@ -27,7 +27,7 @@ export class GameAudio {
   private nextBar = 0; private bar = 0; private nextBird = 0; private nextCrackle = 0; private nextDrip = 0;
   private melody: { inst: Wind; notes: [number, number, number][] } | null = null; // [compás, corchea, midi]
   private amb = { water: 0, fire: 0, cave: 0 }; private indoor = false;
-  private stats = { notes: 0, birdCalls: 0, windNotes: 0, banjoNotes: 0, bars: 0, drumHits: 0, fanfares: 0, sfx: 0, meows: 0 };
+  private stats = { notes: 0, birdCalls: 0, windNotes: 0, banjoNotes: 0, bars: 0, drumHits: 0, fanfares: 0, sfx: 0, meows: 0, crackles: 0 };
   private limiter = false;
   /** botón de parlante: silencia solo la música (aves, agua, fuego, bombos y trompetas siguen) */
   musicOn = true;
@@ -99,7 +99,7 @@ export class GameAudio {
 
     this.breath = c.createBuffer(1, c.sampleRate * 3, c.sampleRate);
     { const d = this.breath.getChannelData(0), rb = mulberry32(11); for (let i = 0; i < d.length; i++) d[i] = rb() * 2 - 1; }
-    for (let k = 0; k < 8; k++) {
+    for (let k = 0; k < 16; k++) {
       const rc = mulberry32(40 + k), n = Math.floor(c.sampleRate * (0.008 + rc() * 0.025)), b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0);
       for (let i = 0; i < n; i++) d[i] = (rc() * 2 - 1) * (1 - i / n) ** 2;
       this.crackles.push(b);
@@ -267,11 +267,16 @@ export class GameAudio {
     if (this.nextBird < now - 0.5) this.nextBird = now;
     if (this.nextBird < horizon) { this.birdCall(Math.max(now, this.nextBird), this.listenerPos); this.nextBird = Math.max(now, this.nextBird) + (this.indoor || this.amb.cave ? 4 + r() * 5 : 1.1 + r() * 2.6); }
     if (this.amb.fire > 0.05 && this.nextCrackle < horizon) {
+      // chisporroteo: 2/3 de la cantidad anterior, a la mitad de volumen, con altura variable y ritmo irregular
       const t = Math.max(now, this.nextCrackle), src = c.createBufferSource(), b = this.crackles[Math.floor(r() * this.crackles.length)];
       const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 900 + r() * 2500;
-      const g = c.createGain(); g.gain.value = (0.1 + r() * 0.3) * this.amb.fire;
-      src.buffer = b; src.connect(hp); hp.connect(g); g.connect(this.master); src.start(t);
-      this.nextCrackle = t + 0.03 + r() * 0.3;
+      const g = c.createGain(); g.gain.value = (0.05 + r() * 0.15) * this.amb.fire;
+      src.buffer = b; src.playbackRate.value = 0.75 + r() * 0.6;
+      src.connect(hp); hp.connect(g); g.connect(this.master); src.start(t);
+      this.stats.crackles++;
+      // a veces una ráfaga de chasquidos seguidos, a veces silencios largos (promedio ~0,28 s; antes ~0,18 s)
+      const q = r();
+      this.nextCrackle = t + (q < 0.25 ? 0.03 + r() * 0.08 : 0.1 + r() * r() * 0.75);
     }
     if (this.amb.cave > 0.5 && this.nextDrip < horizon) {
       const t = Math.max(now, this.nextDrip);

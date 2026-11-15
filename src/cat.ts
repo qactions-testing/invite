@@ -9,6 +9,8 @@ const V3 = THREE.Vector3;
 const BLACK = 0x18181a, WHITE = 0xf1eee6, PINK = 0xe7a1a8;
 
 export type Gait = 'quieto' | 'camina' | 'trota';
+/** lugares candidatos [adelante, costado]; adelante negativo = fracción de la distancia ideal */
+const CANDIDATES: [number, number][] = [[-1, 0.9], [-1, -0.9], [-0.6, 0.7], [1.2, -0.6], [0.9, 0.5]];
 
 export class Cat {
   group = new THREE.Group();
@@ -23,7 +25,7 @@ export class Cat {
   private legs: { pivot: THREE.Group; front: boolean; side: number }[] = [];
   private tail: THREE.Group[] = [];
   private phase = 0; private idleT = 0; private target = new V3(); private hasTarget = false;
-  private prev = new V3();
+  private prev = new V3(); private tp = new V3(); private tq = new V3();
 
   constructor() {
     const std = (color: number, rough = 0.75, extra: THREE.MeshStandardMaterialParameters = {}) => new THREE.MeshStandardMaterial({ color, roughness: rough, ...extra });
@@ -133,14 +135,17 @@ export class Cat {
   private pickTarget(player: Player, scene: GameScene, canStand: (x: number, z: number) => boolean): THREE.Vector3 {
     const s = Math.sin(player.yaw), c = Math.cos(player.yaw), fx = -s, fz = -c, rx = c, rz = -s;
     const ahead = scene.indoor ? 1.7 : 2.8;
-    for (const [d, side] of [[ahead, 0.9], [ahead, -0.9], [ahead * 0.6, 0.7], [1.2, -0.6], [0.9, 0.5]]) {
-      const p = new V3(player.pos.x + fx * d + rx * side, 0, player.pos.z + fz * d + rz * side);
+    // vectores reutilizados: esto corre en cada cuadro mientras el jugador camina
+    const p = this.tp, q = this.tq;
+    for (const [d, side] of CANDIDATES) {
+      const dd = d < 0 ? ahead * -d : d;
+      p.set(player.pos.x + fx * dd + rx * side, 0, player.pos.z + fz * dd + rz * side);
       if (!canStand(p.x, p.z)) continue;
-      const q = p.clone(); scene.collide(q, 0.15);
+      q.copy(p); scene.collide(q, 0.15);
       if (q.distanceTo(p) < 0.25) return q.setY(scene.groundY(q.x, q.z));
     }
-    const p = new V3(player.pos.x + rx * 0.6, 0, player.pos.z + rz * 0.6); scene.collide(p, 0.15);
-    return p.setY(scene.groundY(p.x, p.z));
+    q.set(player.pos.x + rx * 0.6, 0, player.pos.z + rz * 0.6); scene.collide(q, 0.15);
+    return q.setY(scene.groundY(q.x, q.z));
   }
 
   update(dt: number, t: number, player: Player, scene: GameScene, canStand: (x: number, z: number) => boolean) {
