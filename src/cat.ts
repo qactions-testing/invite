@@ -107,6 +107,18 @@ export class Cat {
     }
   }
 
+  /**
+   * Luz propia: las salas están horneadas (su luz vive en texturas que solo afectan a la sala), así que adentro
+   * el gato no recibía luz y se veía negro. Con el reflejo del cielo del bosque en sus materiales se ve igual en todas partes.
+   */
+  hasEnv = false;
+  setEnvironment(env: THREE.Texture) {
+    const mats = new Set<THREE.MeshStandardMaterial>();
+    this.group.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial; if (m?.isMeshStandardMaterial) mats.add(m); });
+    for (const m of mats) { m.envMap = env; m.envMapIntensity = 1.15; m.needsUpdate = true; }
+    this.hasEnv = true;
+  }
+
   /** Ubica al gato junto al jugador (al empezar, tras un viaje o un cambio de escena). */
   snap(player: Player, scene: GameScene, canStand: (x: number, z: number) => boolean) {
     scene.scene.add(this.group);

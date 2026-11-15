@@ -497,6 +497,8 @@ class Game {
       else { this.fadeK = Math.max(0, this.fadeK - dt / 0.35); if (this.fadeK <= 0) { this.trans = null; tr.then?.(); } }
     } else this.player.update(dt, this.current);
     this.player.apply(this.camera);
+    // el reflejo del cielo (se carga aparte) también ilumina al gato dentro de las salas horneadas
+    if (!this.cat.hasEnv && this.forest.scene.environment) this.cat.setEnvironment(this.forest.scene.environment);
     if (!this.trans) this.cat.update(dt, this.t, this.player, this.current, this.canStand);
     // de vez en cuando maúlla
     this.meowT -= dt;
@@ -639,7 +641,7 @@ class Game {
           notice: g.ui.noticeOpen ? document.getElementById('notice-text')!.textContent : null,
           found: document.getElementById('found')!.classList.contains('open') ? document.getElementById('found-title')!.textContent : null,
           speed: g.player.speed, run: g.player.run, fov: g.camera.fov, touch: !!g.touch,
-          cat: { pos: g.cat.pos.toArray(), heading: g.cat.heading, gait: g.cat.gait, sit: g.cat.sit, speed: g.cat.speed, gems: g.cat.gems, scene: g.cat.group.parent === g.current.scene,
+          cat: { pos: g.cat.pos.toArray(), heading: g.cat.heading, gait: g.cat.gait, sit: g.cat.sit, speed: g.cat.speed, gems: g.cat.gems, scene: g.cat.group.parent === g.current.scene, env: g.cat.hasEnv,
             dist: Math.hypot(g.cat.pos.x - g.player.pos.x, g.cat.pos.z - g.player.pos.z) },
           quality: g.level, shadows: g.forest.atmo.light.castShadow, bloom: !!g.composer, pixelRatio: g.renderer.getPixelRatio(),
           chunks: { total: f.flora.chunkCount, visible: f.flora.visibleChunks },

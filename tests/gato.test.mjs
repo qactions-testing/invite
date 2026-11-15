@@ -60,6 +60,7 @@ test('el gato también entra a las salas y a la mazmorra', async () => {
     const s = await S();
     assert.equal(s.scene, scene);
     assert.ok(s.cat.scene, `el gato está en ${scene}`);
+    assert.equal(s.cat.env, true, `${scene}: iluminado con el reflejo del cielo (las salas horneadas no lo iluminan)`);
     assert.ok(s.cat.dist < 4, `${scene}: a ${s.cat.dist.toFixed(1)} m`);
   }
   await page.evaluate(() => window.__invite.teleport('fogata', 6, 1.5));
