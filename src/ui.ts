@@ -53,7 +53,7 @@ export class UI {
       if (performance.now() - this.openedAt < 400) return;
       this.onMapPick(hit.id);
     });
-    cv.addEventListener('mousemove', (e) => { cv.style.cursor = this.mapHit(cv, e.clientX, e.clientY) ? 'pointer' : ''; });
+    cv.addEventListener('mousemove', (e) => { cv.classList.toggle('hot', !!this.mapHit(cv, e.clientX, e.clientY)); });
   }
   private mapHit(cv: HTMLCanvasElement, cx: number, cy: number): MapHit | null {
     const r = cv.getBoundingClientRect(), x = ((cx - r.left) * cv.width) / r.width, y = ((cy - r.top) * cv.height) / r.height;

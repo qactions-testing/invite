@@ -103,6 +103,7 @@ export class ForestScene implements GameScene {
     // de entrada se mira hacia la fogata, con el sol de costado
     f.spawn.yaw = Math.atan2(-(P.fogata.x - sx), -(P.fogata.z - sz));
     f.nav = new Nav(f.geo, (x, z) => T.heightAt(x, z), (x, z) => f.blocked(x, z));
+    f.placeStart();
     progress(0.95, 'Soltando los pájaros…');
     return f;
   }
@@ -621,9 +622,32 @@ void main() {
     this.sparkles.forEach((s, i) => { s.scale.setScalar(0.3 + 0.1 * Math.sin(t * 2.4 + i * 1.7)); s.material.rotation = t * 0.4 + i; });
   }
 
+  /**
+   * Donde aparece el jugador al empezar: el extremo norte (Paraguay), mirando al sur-sudeste hacia la Caña Fístula.
+   * Elegido por el usuario sobre el mapa: START_MAP son coordenadas del canvas del mapa (620×1240) y se
+   * convierten a metros con la misma transformación que `drawMap`. (`spawn` sigue siendo el ancla del diseño:
+   * hacia ahí miran las fachadas de las casas.)
+   */
+  start = { pos: new V3(), yaw: -2.81 };
+  private placeStart() {
+    const START_MAP = [425.6, 133.2], W = 620, H = 1240, pad = 34, b = this.geo.bounds;
+    const s = Math.min((W - pad * 2) / (b.maxX - b.minX), (H - pad * 2) / (b.maxZ - b.minZ));
+    const ox = (W - (b.maxX - b.minX) * s) / 2 - b.minX * s, oz = (H - (b.maxZ - b.minZ) * s) / 2 - b.minZ * s;
+    let x = (START_MAP[0] - ox) / s, z = (START_MAP[1] - oz) / s;
+    // si justo cae sobre un tronco o agua, el punto pisable más cercano
+    if (!this.nav.walkable(x, z)) {
+      search: for (let r = 1; r <= 8; r++) for (let k = 0; k < 16; k++) {
+        const a = (k / 16) * Math.PI * 2, nx = x + Math.cos(a) * r, nz = z + Math.sin(a) * r;
+        if (this.nav.walkable(nx, nz)) { x = nx; z = nz; break search; }
+      }
+    }
+    const p = new V3(x, 0, z); this.collide(p, 0.36);
+    this.start.pos.set(p.x, this.groundY(p.x, p.z), p.z);
+  }
+
   entry(from: string | null) {
     const d = from ? this.doors[from] : null;
-    return d ? { pos: d.pos.clone(), yaw: d.yaw } : { pos: this.spawn.pos.clone(), yaw: this.spawn.yaw };
+    return d ? { pos: d.pos.clone(), yaw: d.yaw } : { pos: this.start.pos.clone(), yaw: this.start.yaw };
   }
 
   inCave(x: number, z: number): boolean {

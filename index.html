@@ -79,11 +79,14 @@
   #reader p { font-size: 20px; line-height: 1.55; margin: 0 0 18px; white-space: pre-line; }
   #reader .close { font-size: 13px; color: #7a6040; text-align: right; }
 
-  #map { background: rgba(10, 7, 4, 0.6); }
-  #map .sheet { position: relative; padding: 12px 18px; background: radial-gradient(ellipse at 40% 20%, #f7edd6, #e3cf9f); border-radius: 6px;
+  /* puntero propio en el mapa (flecha turquesa con borde dorado); más grande sobre un lugar */
+  #map { background: rgba(10, 7, 4, 0.6); cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cpath d='M4 3v22l6-5.6 4.6 9.6 4.6-2.1-4.5-9.4 7.9-.4z' fill='%230f8f80' stroke='%23e9a12b' stroke-width='2.6' stroke-linejoin='round'/%3E%3Cpath d='M6.6 8v11.2l3.6-3.3' fill='none' stroke='%2350d2bd' stroke-width='1.4' stroke-linecap='round' opacity='.85'/%3E%3C/svg%3E") 4 3, default; }
+  #map canvas.hot { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Cpath d='M5 4v27.5l7.5-7 5.8 12 5.8-2.6-5.7-11.8 9.9-.5z' fill='%2314b3a0' stroke='%23ffc23f' stroke-width='3' stroke-linejoin='round'/%3E%3Cpath d='M8.2 10v14l4.5-4.1' fill='none' stroke='%237ff0dc' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") 5 4, pointer; }
+  #map .sheet { position: relative; padding: 8px 10px 6px; background: radial-gradient(ellipse at 40% 20%, #f7edd6, #e3cf9f); border-radius: 6px;
     box-shadow: 0 30px 80px rgba(0, 0, 0, 0.65); color: var(--ink); text-align: center; }
   #map h3 { margin: 0 0 4px; font-weight: 500; font-size: 20px; }
-  #map canvas { display: block; height: min(82vh, 980px); width: auto; }
+  /* el mapa llena el marco de papel: lo más alto que entre en pantalla (y en celular, todo el ancho) */
+  #map canvas { display: block; height: min(calc(100vh - 92px), calc((100vw - 32px) * 2), 1240px); width: auto; border-radius: 3px; }
   #map .legend { font-size: 13px; color: #6a5030; margin-top: 4px; }
 
   #search { align-items: flex-start; padding-top: 12vh; background: rgba(10, 7, 4, 0.5); }
@@ -142,14 +145,13 @@
   #tbtns button.off { visibility: hidden; }
   /* con un panel abierto solo queda Cerrar (y un toque en el panel también cierra) */
   body.touch.panel #stick, body.touch.panel #tbtns button:not([data-a=close]) { display: none; }
-  body.touch.panel #tbtns { grid-template-columns: 92px; }
+  body.touch.panel #tbtns { grid-template-columns: 92px; top: calc(12px + env(safe-area-inset-top)); bottom: auto; }
   body.touch.panel #tbtns button { opacity: 0.7; }
   @media (orientation: landscape) and (max-height: 520px) {
     #stick { width: 116px; height: 116px; bottom: calc(16px + env(safe-area-inset-bottom)); }
     #knob { width: 50px; height: 50px; margin: -25px; }
     #tbtns { grid-template-columns: repeat(3, 82px); gap: 8px; bottom: calc(16px + env(safe-area-inset-bottom)); }
     #tbtns button { height: 40px; font-size: 14px; }
-    body.touch #map canvas { height: 76vh; }
     body.touch #reader .page { max-height: 90vh; padding: 20px 26px 16px; }
     body.touch #reader p { font-size: 17px; }
     body.touch #search { padding-top: 4vh; }
@@ -252,21 +254,21 @@
   <div class="sub">Son las cinco de la tarde. En algún lugar de este bosque, una casita de gnomos guarda una invitación.</div>
   <button id="enter">Entrar al bosque</button>
   <div class="keys tc">
-    <span>Joystick</span><span>caminar (3 m/s)</span>
-    <span>Trotar</span><span>trotar (6 m/s)</span>
-    <span>Deslizar el dedo</span><span>mirar</span>
-    <span>Pellizcar</span><span>zoom</span>
-    <span>Tocar un objeto o Leer</span><span>leer / entrar</span>
-    <span>Mapa · Buscar</span><span>viajar a un lugar u objeto</span>
+    <span>Joystick</span><span>Caminar</span>
+    <span>Trotar</span><span>Trotar</span>
+    <span>Deslizar el dedo</span><span>Mirar</span>
+    <span>Pellizcar</span><span>Zoom</span>
+    <span>Tocar un objeto</span><span>Leer / entrar</span>
+    <span>Mapa · Buscar</span><span>Viajar a un lugar u objeto</span>
   </div>
   <div class="keys pc">
-    <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> o flechas</span><span>caminar</span>
-    <span><kbd>Shift</kbd></span><span>trotar (6 m/s)</span>
-    <span>mouse</span><span>mirar</span>
-    <span><kbd>E</kbd></span><span>leer / entrar</span>
-    <span><kbd>M</kbd></span><span>mapa del bosque</span>
-    <span><kbd>I</kbd></span><span>ver la invitación (cuando la tengas)</span>
-    <span><kbd>Ctrl</kbd>+<kbd>F</kbd></span><span>buscar un objeto y viajar hasta él</span>
+    <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> o flechas</span><span>Caminar</span>
+    <span><kbd>Shift</kbd></span><span>Trotar</span>
+    <span>Mouse</span><span>Mirar</span>
+    <span><kbd>E</kbd></span><span>Leer / entrar</span>
+    <span><kbd>M</kbd></span><span>Mapa del bosque</span>
+    <span><kbd>I</kbd></span><span>Ver la invitación (cuando la tengas)</span>
+    <span><kbd>Ctrl</kbd>+<kbd>F</kbd></span><span>Buscar un objeto y viajar hasta él</span>
   </div>
 </div>
 <script type="module" src="/src/main.ts"></script>

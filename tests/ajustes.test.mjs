@@ -37,13 +37,13 @@ test('el botón de parlante silencia solo la música y se recuerda', async () =>
   assert.ok(a.musicGain > 0.1, 'vuelve la música');
 });
 
-test('el botón de calidad rota Alta → Media → Baja, se recuerda y en todas se ve el bosque', async () => {
+test('calidad Media por defecto; el botón rota Media → Baja → Alta, se recuerda y en todas se ve el bosque', async () => {
   await page.evaluate(() => { const X = window.__invite; X.teleport('fogata', 6, 1.5); X.step(0.5); });
   let s = await S();
-  assert.equal(s.quality, 'alta');
-  assert.equal(s.shadows, true); assert.equal(s.bloom, true);
-  assert.equal(await page.innerText('#btn-quality'), 'Calidad: Alta');
-  const expect = [['media', 'Media', true, false, 1], ['baja', 'Baja', false, false, 0.75], ['alta', 'Alta', true, true, 1]];
+  assert.equal(s.quality, 'media', 'por defecto Media (PC y celular)');
+  assert.equal(s.shadows, true); assert.equal(s.bloom, false);
+  assert.equal(await page.innerText('#btn-quality'), 'Calidad: Media');
+  const expect = [['baja', 'Baja', false, false, 0.75], ['alta', 'Alta', true, true, 1], ['media', 'Media', true, false, 1]];
   for (const [level, label, shadows, bloom, dpr] of expect) {
     await page.click('#btn-quality');
     await step(0.3);
@@ -53,7 +53,7 @@ test('el botón de calidad rota Alta → Media → Baja, se recuerda y en todas 
     assert.equal(s.shadows, shadows, `${level}: sombras`);
     assert.equal(s.bloom, bloom, `${level}: bloom`);
     assert.equal(s.pixelRatio, dpr, `${level}: densidad de píxeles`);
-    assert.equal(await page.evaluate(() => localStorage.getItem('invite.quality.v1')), level);
+    assert.equal(await page.evaluate(() => localStorage.getItem('invite.quality.v2')), level);
     const st = await frameStats(page);
     assert.ok(st.mean > 40 && st.std > 10, `${level}: el bosque se ve (brillo ${st.mean.toFixed(0)}, contraste ${st.std.toFixed(0)})`);
   }

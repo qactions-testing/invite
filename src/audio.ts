@@ -27,7 +27,8 @@ export class GameAudio {
   private nextBar = 0; private bar = 0; private nextBird = 0; private nextCrackle = 0; private nextDrip = 0;
   private melody: { inst: Wind; notes: [number, number, number][] } | null = null; // [compás, corchea, midi]
   private amb = { water: 0, fire: 0, cave: 0 }; private indoor = false;
-  private stats = { notes: 0, birdCalls: 0, windNotes: 0, banjoNotes: 0, bars: 0, drumHits: 0, fanfares: 0, sfx: 0 };
+  private stats = { notes: 0, birdCalls: 0, windNotes: 0, banjoNotes: 0, bars: 0, drumHits: 0, fanfares: 0, sfx: 0, meows: 0 };
+  private limiter = false;
   /** botón de parlante: silencia solo la música (aves, agua, fuego, bombos y trompetas siguen) */
   musicOn = true;
   /** ruido compartido (soplo de los vientos) y chasquidos del fuego: se crean una vez, no en cada nota */
@@ -41,13 +42,20 @@ export class GameAudio {
     if (this.ctx) { this.ctx.resume(); return; }
     const AC: typeof AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AC) return;
-    const c = (this.ctx = new AC());
-    this.master = c.createGain(); this.master.gain.value = 0.9;
+    // 'playback': buffers de audio más grandes; en PCs modestas evita cortes y chasquidos (la latencia no importa acá)
+    let c: AudioContext;
+    try { c = new AC({ latencyHint: 'playback' }); } catch { c = new AC(); }
+    this.ctx = c;
+    this.master = c.createGain(); this.master.gain.value = 0.75;
     const comp = c.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3;
-    this.master.connect(comp); comp.connect(c.destination);
+    // limitador final: nada pasa de −3 dB aunque coincidan bombos, trompetas, aves y música (antes saturaba)
+    const lim = c.createDynamicsCompressor();
+    lim.threshold.value = -3; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.003; lim.release.value = 0.12;
+    this.master.connect(comp); comp.connect(lim); lim.connect(c.destination);
+    this.limiter = true;
 
     // reverberación: impulso de ruido con caída exponencial
-    const len = Math.floor(c.sampleRate * 3), ir = c.createBuffer(2, len, c.sampleRate), r = mulberry32(3);
+    const len = Math.floor(c.sampleRate * 1.8), ir = c.createBuffer(2, len, c.sampleRate), r = mulberry32(3);
     for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (r() * 2 - 1) * (1 - i / len) ** 3.2; }
     const conv = c.createConvolver(); conv.buffer = ir;
     this.reverbIn = c.createGain(); this.reverbIn.gain.value = 1;
@@ -251,9 +259,12 @@ export class GameAudio {
   private schedule() {
     const c = this.ctx;
     if (!c || c.state !== 'running') return;
-    const now = c.currentTime, horizon = now + 0.45, r = this.rng;
-    if (this.nextBar < now - 1) this.nextBar = now + 0.1; // pestaña en segundo plano: no acumula compases
+    // se agenda 1 s por delante; si el navegador se trabó, los compases vencidos se saltean (no suenan todos juntos)
+    const now = c.currentTime, horizon = now + 1.0, r = this.rng;
+    while (this.nextBar < now + 0.05) this.nextBar += 2;
     while (this.nextBar < horizon) { this.scheduleBar(this.nextBar); this.nextBar += 2; }
+    if (this.nextCrackle < now) this.nextCrackle = now;
+    if (this.nextBird < now - 0.5) this.nextBird = now;
     if (this.nextBird < horizon) { this.birdCall(Math.max(now, this.nextBird), this.listenerPos); this.nextBird = Math.max(now, this.nextBird) + (this.indoor || this.amb.cave ? 4 + r() * 5 : 1.1 + r() * 2.6); }
     if (this.amb.fire > 0.05 && this.nextCrackle < horizon) {
       const t = Math.max(now, this.nextCrackle), src = c.createBufferSource(), b = this.crackles[Math.floor(r() * this.crackles.length)];
@@ -342,9 +353,34 @@ export class GameAudio {
     this.birdLp.frequency.value += ((muffled ? 1600 : 12000) - this.birdLp.frequency.value) * k;
     this.music.gain.value += ((this.musicOn ? (this.drumLevel > 0.1 ? 0.17 : indoor ? 0.27 : 0.34) : 0) - this.music.gain.value) * (this.musicOn ? k : 1);
   }
+  /** Maullido del gato ("mi-a-u"): tono que sube y baja con filtros de vocal, desde la posición del gato. */
+  meow(pos: THREE.Vector3) {
+    const c = this.ctx;
+    if (!c || c.state !== 'running') return;
+    const r = this.rng, t = c.currentTime + 0.02, dur = 0.5 + r() * 0.35, f0 = 480 + r() * 180;
+    const o = c.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(f0 * 0.85, t); o.frequency.linearRampToValueAtTime(f0 * 1.4, t + dur * 0.35); o.frequency.linearRampToValueAtTime(f0 * 0.75, t + dur);
+    const vib = c.createOscillator(), vg = c.createGain(); vib.frequency.value = 6.5; vg.gain.value = 10; vib.connect(vg); vg.connect(o.frequency);
+    const env = c.createGain();
+    env.gain.setValueAtTime(0, t); env.gain.linearRampToValueAtTime(0.32, t + 0.06); env.gain.setValueAtTime(0.28, t + dur * 0.6); env.gain.linearRampToValueAtTime(0, t + dur);
+    // dos formantes: "i" (agudo) → "a" → "u" (grave)
+    const mix = c.createGain(); mix.gain.value = 1.4;
+    for (const [a, b, e, q, g] of [[2300, 1250, 750, 7, 1], [3300, 2300, 1000, 5, 0.55]]) {
+      const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = q;
+      bp.frequency.setValueAtTime(a, t); bp.frequency.linearRampToValueAtTime(b, t + dur * 0.4); bp.frequency.linearRampToValueAtTime(e, t + dur);
+      const bg = c.createGain(); bg.gain.value = g; o.connect(bp); bp.connect(bg); bg.connect(mix);
+    }
+    const pan = c.createPanner(); pan.panningModel = 'equalpower'; pan.distanceModel = 'inverse'; pan.refDistance = 2; pan.rolloffFactor = 1;
+    if (pan.positionX) { pan.positionX.value = pos.x; pan.positionY.value = pos.y; pan.positionZ.value = pos.z; } else (pan as any).setPosition(pos.x, pos.y, pos.z);
+    mix.connect(env); env.connect(pan); pan.connect(this.master);
+    const send = c.createGain(); send.gain.value = 0.25; env.connect(send); send.connect(this.reverbIn);
+    o.start(t); vib.start(t); o.stop(t + dur + 0.05); vib.stop(t + dur + 0.05);
+    window.setTimeout(() => pan.disconnect(), (dur + 0.6) * 1000);
+    this.stats.meows++;
+  }
   setMusic(on: boolean) { this.musicOn = on; if (!on && this.music) this.music.gain.value = 0; }
 
   state() {
-    return { context: this.ctx?.state ?? 'none', sampleRate: this.ctx?.sampleRate ?? 0, ...this.stats, drumLevel: this.drumLevel, musicOn: this.musicOn, musicGain: this.music?.gain.value ?? 0, birdGain: this.birdBus?.gain.value ?? 0, melody: this.melody?.inst ?? null, voices: this.ks.size };
+    return { context: this.ctx?.state ?? 'none', sampleRate: this.ctx?.sampleRate ?? 0, ...this.stats, drumLevel: this.drumLevel, limiter: this.limiter, musicOn: this.musicOn, musicGain: this.music?.gain.value ?? 0, birdGain: this.birdBus?.gain.value ?? 0, melody: this.melody?.inst ?? null, voices: this.ks.size };
   }
 }

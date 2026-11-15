@@ -30,7 +30,7 @@ export const PLACES: PlaceDef[] = [
     id: 'fogata', name: 'Fogata de los Novios', idea: 'El amor: memorias amorosas arden sin consumirse nunca', kind: 'natural', ll: [-60.9, -35.5], scene: 'bosque',
     objects: [
       { id: 'tronco-agustina', name: 'Tronco de Agustina', message: 'En las llamas aparece ella: el pelo oscuro hasta el piso y un vestido blanco de otra época.\nEl fuego sagrado la recuerda riéndose.' },
-      { id: 'tronco-gonzalo', name: 'Tronco de Gonzalo', message: 'En las llamas aparece él: guarda papeles escritos en sus bolsillos.\nEl fuego sagrado lo recuerda bien intencionado.' },
+      { id: 'tronco-gonzalo', name: 'Tronco de Gonzalo', message: 'En las llamas aparece él: guarda papeles escritos en sus bolsillos.\nEl fuego sagrado lo recuerda mirando las estrellas.' },
       { id: 'piedra-fogon', name: 'Piedra del fogón', message: 'Todo fuego empieza con una chispa, una pequeña llamarada y se cuida y se cuida, hasta tener un gran fogón: igualito que su amor.' },
     ],
   },

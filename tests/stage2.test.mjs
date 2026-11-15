@@ -119,8 +119,9 @@ test('la puerta está cerrada hasta que se toma la llave; tomarla la abre', asyn
 
 test('llegar al cofre muestra "You found it!" y lo abre', async () => {
   await I(() => { const X = window.__invite; X.teleport({ scene: 'mazmorra', x: 4, z: 8.6, yaw: 0 }); X.look(0, 0); });
-  await page.keyboard.down('w'); await step(5.5); await page.keyboard.up('w');
-  await step(1.5);
+  // a 3 m/s se llega en ~2,3 s; el cartel dura 5 s de tiempo real, así que se mira enseguida
+  await page.keyboard.down('w'); await step(2.6); await page.keyboard.up('w');
+  await step(0.6);
   const s = await state();
   assert.equal(s.room, 4, `debería estar en la sala del tesoro (z=${s.pos[2].toFixed(2)})`);
   assert.equal(s.found, 'You found it!');

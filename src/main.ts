@@ -5,6 +5,8 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 import { GameScene, Interactable } from './core';
 import { DUNGEON, INVITATION, PLACES } from './content/ideas';
 import { Player, isMoveKey } from './player';
@@ -14,13 +16,14 @@ import { RoomScene, TexLib } from './world/rooms';
 import { DungeonScene } from './world/dungeon';
 import { GameAudio } from './audio';
 import { TouchControls, isTouchDevice, FOV } from './touch';
+import { Cat } from './cat';
 
 const params = new URLSearchParams(location.search);
 const TOUCH = isTouchDevice(params);
 if (TOUCH) document.body.classList.add('touch');
 const QUALITY: 'low' | 'high' = params.get('quality') === 'low' ? 'low' : 'high';
 const ROOMS = ['cana', 'abuelas', 'gnomos'];
-const CARD_KEY = 'invite.card.v1', QUALITY_KEY = 'invite.quality.v1', MUSIC_KEY = 'invite.music.v1';
+const CARD_KEY = 'invite.card.v1', QUALITY_KEY = 'invite.quality.v2', MUSIC_KEY = 'invite.music.v1';
 const SHOW_FPS = params.has('fps');
 
 /** Calidad gráfica (botón en pantalla). Distancias de dibujo: [pasto, plantas, árboles] en m. */
@@ -43,8 +46,14 @@ class Game {
   composer: EffectComposer | null = null;
   private renderPass: RenderPass | null = null;
   private bloom: UnrealBloomPass | null = null;
+  private fxaa: ShaderPass | null = null;
   camera = new THREE.PerspectiveCamera(FOV.base, innerWidth / innerHeight, 0.08, 2600);
   touch: TouchControls | null = null;
+  /** el gato tuxedo que acompaña al jugador */
+  cat = new Cat();
+  private meowT = 6;
+  /** dónde puede pararse el gato: en el bosque, tierra firme sin troncos ni agua; en las salas, donde no haya pared */
+  private canStand = (x: number, z: number) => (this.current === this.forest ? this.forest.nav.walkable(x, z) : true);
   ui = new UI(); player = new Player(); audio = new GameAudio(); lib = new TexLib();
   forest!: ForestScene;
   dungeon: DungeonScene | null = null;
@@ -63,7 +72,7 @@ class Game {
   travelling = false;
   level: Level = 'alta';
   private lightCache = new Map<string, THREE.PointLight[]>();
-  private lightTick = 0; private shadowT = 0; private shadowAt = new THREE.Vector3(1e9, 0, 0);
+  private lightTick = 0; private shadowAt = new THREE.Vector3(1e9, 0, 0);
   private tmpA = new THREE.Vector3(); private tmpB = new THREE.Vector3();
   private fps = { n: 0, t: 0, worst: 0 };
   private ray = new THREE.Raycaster();
@@ -96,14 +105,17 @@ class Game {
     }
     this.setScene('bosque', null);
     const saved = store.get(QUALITY_KEY) as Level | null;
-    this.applyQuality(QUALITY === 'low' ? 'baja' : saved && LEVELS.includes(saved) ? saved : TOUCH ? 'media' : 'alta', false);
+    // por defecto Media en PC y celular (Alta queda a mano en el botón)
+    this.applyQuality(QUALITY === 'low' ? 'baja' : saved && LEVELS.includes(saved) ? saved : 'media', false);
     this.audio.setMusic(store.get(MUSIC_KEY) !== '0');
     // shaders de todas las escenas compilados de antemano: entrar a una sala o a la mazmorra no traba
     this.ui.progress(0.97, 'Preparando la luz del bosque…');
     for (const sc of Object.values(this.scenes)) {
       this.manageLights(sc, true);
+      sc.scene.add(this.cat.group); // el gato también, para que entrar a una sala con él no trabe
       try { await r.compileAsync(sc.scene, this.camera); } catch { /* se compila al dibujar */ }
     }
+    this.current.scene.add(this.cat.group);
     this.manageLights(this.current, true);
     this.bind();
     this.ui.progress(1, 'Listo');
@@ -112,6 +124,8 @@ class Game {
     this.ui.onMapPick = (id) => { void this.travelTo(id); };
     this.ui.onClose = () => {
       this.player.enabled = this.started && !this.ui.anyOpen;
+      // en PC, al cerrar el último panel (tecla o click) se vuelve a capturar el mouse para mirar
+      if (!TOUCH && this.started && !this.ui.anyOpen && document.pointerLockElement !== this.renderer.domElement && !params.has('autostart')) this.lock();
       // leer la trampilla es "la señal": al cerrar el mensaje, el candado cede
       if (this.trapPending && !this.ui.readerOpen) {
         this.trapPending = false;
@@ -212,7 +226,8 @@ class Game {
     sun.castShadow = q.shadow > 0;
     if (q.shadow && sun.shadow.mapSize.x !== q.shadow) { sun.shadow.mapSize.set(q.shadow, q.shadow); sun.shadow.map?.dispose(); (sun.shadow as any).map = null; }
     r.shadowMap.needsUpdate = true;
-    if (q.bloom) this.ensurePost(); else if (this.composer) { this.composer.dispose(); this.composer = null; this.renderPass = null; this.bloom = null; }
+    if (q.bloom) { this.ensurePost(); this.composer!.setPixelRatio(r.getPixelRatio()); this.composer!.setSize(innerWidth, innerHeight); this.sizeBloom(); }
+    else if (this.composer) { this.composer.dispose(); this.composer = null; this.renderPass = null; this.bloom = null; this.fxaa = null; }
     this.forest.flora.ranges = q.ranges;
     this.forest.flora.cull(this.player.pos, true);
     this.lightCache.forEach((_, id) => this.manageLights(this.scenes[id], true));
@@ -223,7 +238,9 @@ class Game {
   private ensurePost() {
     if (this.composer) return;
     const r = this.renderer, size = r.getDrawingBufferSize(new THREE.Vector2());
-    const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 });
+    // sin antialiasing ×4 en la textura: esa combinación (punto flotante + MSAA) da bloques negros en varios drivers de PC;
+    // el borde se suaviza con FXAA al final
+    const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 0 });
     this.composer = new EffectComposer(r, rt);
     this.renderPass = new RenderPass(this.current.scene, this.camera);
     this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 4, size.y / 4), 0.3, 0.65, 0.92);
@@ -232,17 +249,20 @@ class Game {
     hp.fragmentShader = hp.fragmentShader.replace('gl_FragColor = mix( outputColor, texel, alpha );',
       'gl_FragColor = mix( outputColor, texel, alpha );\n\t\t\tif ( any( isnan( gl_FragColor ) ) || any( isinf( gl_FragColor ) ) ) gl_FragColor = vec4( 0.0 );');
     hp.needsUpdate = true;
-    this.composer.addPass(this.renderPass); this.composer.addPass(this.bloom); this.composer.addPass(new OutputPass());
+    this.fxaa = new ShaderPass(FXAAShader);
+    this.composer.addPass(this.renderPass); this.composer.addPass(this.bloom); this.composer.addPass(new OutputPass()); this.composer.addPass(this.fxaa);
+    this.sizeBloom();
     this.bloom.strength = this.current.indoor ? 0.42 : 0.3;
   }
   private sizeBloom() {
     if (!this.bloom) return;
     const s = this.renderer.getDrawingBufferSize(new THREE.Vector2());
     this.bloom.resolution.set(s.x / 4, s.y / 4);
+    this.fxaa?.material.uniforms.resolution.value.set(1 / s.x, 1 / s.y);
   }
   /** Deja encendidas solo las luces puntuales más cercanas; la cantidad encendida es fija para no recompilar shaders. */
   private manageLights(sc: GameScene, force = false) {
-    if (!force && (this.lightTick += 1) % 15) return;
+    if (!force && ((this.lightTick += 1) % 15) !== 7) return; // en otro cuadro que el descarte de la vegetación
     let ls = this.lightCache.get(sc.id);
     if (!ls) { ls = []; sc.scene.traverse((o) => { if ((o as THREE.PointLight).isPointLight) ls!.push(o as THREE.PointLight); }); this.lightCache.set(sc.id, ls); }
     // la mazmorra es chica y vive de sus antorchas: ahí se encienden dos más
@@ -269,6 +289,7 @@ class Game {
     this.current = sc;
     const e = sc.entry(from);
     this.player.pos.copy(e.pos); this.player.yaw = e.yaw; this.player.pitch = 0;
+    this.cat.snap(this.player, sc, this.canStand);
     if (this.renderPass) this.renderPass.scene = sc.scene;
     if (this.bloom) this.bloom.strength = sc.indoor ? 0.42 : 0.3;
     this.hover = null; this.nearPlace = sc.indoor ? id : null;
@@ -363,6 +384,8 @@ class Game {
     if (this.ui.mapOpen) { this.ui.closeMap(); return; }
     this.ui.readerOpen && this.ui.closeReader();
     this.player.enabled = false; this.player.keys.clear();
+    // en PC se suelta el mouse: aparece el puntero para elegir un lugar sin tener que apretar Esc
+    document.exitPointerLock?.();
     const f = this.forest;
     // dentro de una sala, el marcador queda en su puerta
     const door = this.current.indoor ? f.doors[this.current.id] : null;
@@ -441,6 +464,7 @@ class Game {
       this.ui.travelProgress(0.25);
       this.trans = null; this.fadeK = 0;
       const label = this.placeAt(id) ?? '';
+      this.cat.snap(this.player, this.current, this.canStand);
       this.ui.travelProgress(0.5);
       this.forest.flora.cull(this.player.pos, true);
       this.manageLights(this.current, true);
@@ -453,6 +477,7 @@ class Game {
       this.ui.travelEnd();
       const where = place ? place.idea : PLACES.find((p) => p.id === fi!.it.placeId)?.name ?? '';
       this.ui.toast(label, where);
+      this.audio.meow(this.cat.pos); this.meowT = 25 + Math.random() * 35; // el gato llega con vos y avisa
       this.nearPlace = place && place.kind === 'natural' ? place.id : this.nearPlace;
     } finally {
       this.travelling = false;
@@ -472,6 +497,10 @@ class Game {
       else { this.fadeK = Math.max(0, this.fadeK - dt / 0.35); if (this.fadeK <= 0) { this.trans = null; tr.then?.(); } }
     } else this.player.update(dt, this.current);
     this.player.apply(this.camera);
+    if (!this.trans) this.cat.update(dt, this.t, this.player, this.current, this.canStand);
+    // de vez en cuando maúlla
+    this.meowT -= dt;
+    if (this.meowT <= 0 && this.started) { this.audio.meow(this.cat.pos); this.meowT = 25 + Math.random() * 35; }
     this.current.update(dt, this.t, this.camera, this.renderer.domElement.height);
     this.pick();
     // invitación: cuenta regresiva y autodestrucción
@@ -492,11 +521,10 @@ class Game {
     this.audio.update(dt, this.camera, this.current.ambience?.(this.camera.position) ?? { water: 0, fire: 0, cave: 0 }, this.current.indoor);
     this.ui.fade(this.fadeK);
     this.manageLights(this.current);
-    // sombras: el mapa se recalcula cuando el sol se reubica (el jugador avanzó) y 5 veces por segundo por el viento en las hojas
-    this.shadowT += dt;
+    // sombras: el sol no se mueve; el mapa se recalcula solo cuando su encuadre se reubica (cada 2 m que avanza el jugador)
     const sun = this.forest.atmo.light;
-    if (this.current === this.forest && sun.castShadow && (this.shadowT > 0.2 || sun.position.distanceToSquared(this.shadowAt) > 0.01)) {
-      this.renderer.shadowMap.needsUpdate = true; this.shadowT = 0; this.shadowAt.copy(sun.position);
+    if (this.current === this.forest && sun.castShadow && sun.position.distanceToSquared(this.shadowAt) > 0.01) {
+      this.renderer.shadowMap.needsUpdate = true; this.shadowAt.copy(sun.position);
     }
     this.syncPanels();
   }
@@ -556,6 +584,7 @@ class Game {
         return true;
       },
       interact: () => g.interact(),
+      meow: () => g.audio.meow(g.cat.pos),
       travelTo: (id: string) => g.travelTo(id),
       /** solo tests: recorre a pie la ruta interna de la escena hasta un objeto (prueba que los cuartos conectan) */
       walkRoute: (id: string) => {
@@ -610,6 +639,8 @@ class Game {
           notice: g.ui.noticeOpen ? document.getElementById('notice-text')!.textContent : null,
           found: document.getElementById('found')!.classList.contains('open') ? document.getElementById('found-title')!.textContent : null,
           speed: g.player.speed, run: g.player.run, fov: g.camera.fov, touch: !!g.touch,
+          cat: { pos: g.cat.pos.toArray(), heading: g.cat.heading, gait: g.cat.gait, sit: g.cat.sit, speed: g.cat.speed, gems: g.cat.gems, scene: g.cat.group.parent === g.current.scene,
+            dist: Math.hypot(g.cat.pos.x - g.player.pos.x, g.cat.pos.z - g.player.pos.z) },
           quality: g.level, shadows: g.forest.atmo.light.castShadow, bloom: !!g.composer, pixelRatio: g.renderer.getPixelRatio(),
           chunks: { total: f.flora.chunkCount, visible: f.flora.visibleChunks },
           lights: [...g.lightCache.get(g.current.id) ?? []].filter((l) => l.visible).length,
