@@ -30,6 +30,8 @@ export class TouchControls {
   private fingers = new Map<number, { x: number; y: number; x0: number; y0: number; t0: number; moved: boolean }>();
   private pinchD = 0;
   private lastPanel = false;
+  /** momento del último toque en un botón: el click fantasma que el navegador manda después no debe caer en otro botón */
+  lastAction = 0;
 
   constructor(private host: TouchHost) {
     document.querySelectorAll<HTMLButtonElement>('#tbtns button').forEach((b) => this.btns.set(b.dataset.a!, b));
@@ -37,7 +39,7 @@ export class TouchControls {
     for (const [a, b] of this.btns) {
       let id: number | null = null;
       b.addEventListener('pointerdown', (e) => { e.preventDefault(); id = e.pointerId; b.classList.add('down'); });
-      b.addEventListener('pointerup', (e) => { if (e.pointerId !== id) return; id = null; b.classList.remove('down'); this.action(a); });
+      b.addEventListener('pointerup', (e) => { if (e.pointerId !== id) return; id = null; b.classList.remove('down'); this.lastAction = performance.now(); this.action(a); });
       b.addEventListener('pointercancel', () => { id = null; b.classList.remove('down'); });
       b.addEventListener('pointerleave', () => { id = null; b.classList.remove('down'); });
     }

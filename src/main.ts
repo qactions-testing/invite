@@ -124,6 +124,7 @@ class Game {
     this.ui.onMapPick = (id) => { void this.travelTo(id); };
     this.ui.onClose = () => {
       this.player.enabled = this.started && !this.ui.anyOpen;
+      this.syncPanels(); // los controles vuelven al instante (no un cuadro después)
       // en PC, al cerrar el último panel (tecla o click) se vuelve a capturar el mouse para mirar
       if (!TOUCH && this.started && !this.ui.anyOpen && document.pointerLockElement !== this.renderer.domElement && !params.has('autostart')) this.lock();
       // leer la trampilla es "la señal": al cerrar el mensaje, el candado cede
@@ -132,7 +133,11 @@ class Game {
         if (this.dungeon) { this.trapOpen = true; this.audio.sfx('lock'); this.ui.toast('La trampilla se abrió', TOUCH ? 'Tocala para bajar a la mazmorra' : 'E para bajar a la mazmorra'); }
       }
     };
-    document.getElementById('inv-card')!.addEventListener('click', () => this.showCard());
+    document.getElementById('inv-card')!.addEventListener('click', () => {
+      // un toque en Cerrar (arriba a la derecha) deja un click fantasma justo acá: se ignora
+      if (this.touch && performance.now() - this.touch.lastAction < 500) return;
+      this.showCard();
+    });
     if (params.has('autostart')) this.start(false);
     this.last = performance.now();
     requestAnimationFrame(this.frame);

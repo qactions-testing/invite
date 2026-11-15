@@ -120,8 +120,12 @@ test('la puerta está cerrada hasta que se toma la llave; tomarla la abre', asyn
 test('llegar al cofre muestra "You found it!" y lo abre', async () => {
   await I(() => { const X = window.__invite; X.teleport({ scene: 'mazmorra', x: 4, z: 8.6, yaw: 0 }); X.look(0, 0); });
   // a 3 m/s se llega en ~2,3 s; el cartel dura 5 s de tiempo real, así que se mira enseguida
-  await page.keyboard.down('w'); await step(2.6); await page.keyboard.up('w');
+  // se camina de a pasos cortos hasta encontrarlo (con la suite en paralelo los eventos de teclado pueden llegar tarde)
+  await page.keyboard.down('w');
+  for (let i = 0; i < 20 && !(await state()).dungeon.found; i++) await step(0.2);
+  await page.keyboard.up('w');
   await step(0.6);
+  for (let i = 0; i < 10 && (await state()).dungeon.chestOpen <= 0.95; i++) await step(0.2);
   const s = await state();
   assert.equal(s.room, 4, `debería estar en la sala del tesoro (z=${s.pos[2].toFixed(2)})`);
   assert.equal(s.found, 'You found it!');

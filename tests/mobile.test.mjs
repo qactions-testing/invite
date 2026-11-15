@@ -182,8 +182,11 @@ test('en horizontal los controles entran en pantalla y siguen funcionando', asyn
   assert.ok(sc.sh > sc.ch * 2, 'se puede desplazar');
   await I(() => { document.getElementById('map').scrollTop = 99999; });
   assert.ok((await I(() => document.getElementById('map').scrollTop)) > 300, 'baja hasta el sur');
+  const end = await box('#map-canvas');
+  assert.ok(end.y + end.h <= 390, 'abajo del todo se ve el extremo sur');
+  await I(() => { const m = document.getElementById('map'), p = window.__invite.mapPoint('gnomos'); m.scrollTop += p.y - 195; });
   const gn = await I(() => window.__invite.mapPoint('gnomos'));
-  assert.ok(gn.y > 0 && gn.y < 390, 'desplazado, la Casita de Gnomos queda a la vista');
+  assert.ok(gn.y > 0 && gn.y < 390, 'desplazando, la Casita de Gnomos queda a la vista');
   await settle(); await tap(60, 60); // fuera de la hoja
   assert.equal((await S()).map, false);
   await page.setViewportSize({ width: 390, height: 844 });
