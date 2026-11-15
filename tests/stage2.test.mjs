@@ -35,20 +35,20 @@ test('campamento: carpa y ropa colgada con las dos remeras pedidas', async () =>
   await page.keyboard.press('Escape');
 });
 
-test('Shift hace trotar a 3 m/s; sin Shift se camina a 1 m/s', async () => {
+test('Shift hace trotar a 6 m/s; sin Shift se camina a 3 m/s', async () => {
   const run = async (shift) => {
     await I(() => { const X = window.__invite; X.teleport('fogata', 4, 1.5); X.look(X.state().yaw + Math.PI, 0); });
     const a = await state();
     if (shift) await page.keyboard.down('Shift');
-    await page.keyboard.down('w'); await step(2); await page.keyboard.up('w');
+    await page.keyboard.down('w'); await step(1); await page.keyboard.up('w');
     if (shift) await page.keyboard.up('Shift');
     const b = await state();
     return Math.hypot(b.pos[0] - a.pos[0], b.pos[2] - a.pos[2]);
   };
   const walk = await run(false), trot = await run(true);
-  assert.ok(Math.abs(walk - 2) < 0.12, `caminando: ${walk.toFixed(2)} m en 2 s`);
-  assert.ok(Math.abs(trot - 6) < 0.3, `trotando: ${trot.toFixed(2)} m en 2 s`);
-  assert.equal((await state()).speed, 1, 'al soltar Shift vuelve a 1 m/s');
+  assert.ok(Math.abs(walk - 3) < 0.15, `caminando: ${walk.toFixed(2)} m en 1 s`);
+  assert.ok(Math.abs(trot - 6) < 0.3, `trotando: ${trot.toFixed(2)} m en 1 s`);
+  assert.equal((await state()).speed, 3, 'al soltar Shift vuelve a 3 m/s');
 });
 
 test('el kit modular de Blender trae pared, arco, piso, escalera, puerta, antorcha y cofre, y la mazmorra lo usa', async () => {
@@ -85,11 +85,11 @@ test('cinco cuartos: el corredor de antorchas parpadea y lleva hasta la llave', 
   for (let i = 0; i < 20; i++) { await step(0.05); lights.push((await state()).dungeon.torchLight[3]); }
   assert.ok(Math.max(...lights) / Math.min(...lights) > 1.15, 'las antorchas parpadean');
   assert.ok(s.dungeon.torches >= 6, `antorchas: ${s.dungeon.torches}`);
-  await I(() => window.__invite.walkTo('llave'));
+  assert.equal(await I(() => window.__invite.walkRoute('llave')), true);
   const visited = new Set([s.room]);
   s = await state();
-  for (let i = 0; i < 80 && s.walking; i++) { await step(1, 30); s = await state(); visited.add(s.room); }
-  assert.equal(s.walking, false, 'llega caminando hasta la llave');
+  for (let i = 0; i < 80 && s.autoWalk; i++) { await step(0.5, 30); s = await state(); visited.add(s.room); }
+  assert.equal(s.autoWalk, false, 'llega caminando hasta la llave');
   for (const r of [0, 1, 2, 3]) assert.ok(visited.has(r), `no pasó por el cuarto ${r + 1} (visitó ${[...visited]})`);
   assert.equal(s.hover, 'llave');
 });

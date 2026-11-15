@@ -50,16 +50,16 @@ test('en la compu no aparecen los controles táctiles', async () => {
   await ctx.close();
 });
 
-test('el joystick camina a 1 m/s y con Trotar a 3 m/s', async () => {
+test('el joystick camina a 3 m/s y con Trotar a 6 m/s', async () => {
   await I(() => { const X = window.__invite; X.teleport('fogata', 4, 1.5); X.look(X.state().yaw + Math.PI, 0); X.step(0.05); });
   const st = await box('#stick');
   await touch('touchStart', [[st.cx, st.cy]]);
   await touch('touchMove', [[st.cx, st.cy - 60]]);
   const a = await S();
-  await I(() => window.__invite.step(3));
+  await I(() => window.__invite.step(1));
   const b = await S();
   const d = Math.hypot(b.pos[0] - a.pos[0], b.pos[2] - a.pos[2]);
-  assert.ok(Math.abs(d - 3) < 0.15, `caminó ${d.toFixed(2)} m en 3 s`);
+  assert.ok(Math.abs(d - 3) < 0.15, `caminó ${d.toFixed(2)} m en 1 s`);
   // hacia adelante: la dirección del movimiento coincide con la mirada
   const fx = -Math.sin(a.yaw), fz = -Math.cos(a.yaw);
   assert.ok(((b.pos[0] - a.pos[0]) * fx + (b.pos[2] - a.pos[2]) * fz) / d > 0.97, 'avanza hacia donde mira');
@@ -71,7 +71,7 @@ test('el joystick camina a 1 m/s y con Trotar a 3 m/s', async () => {
   await I(() => window.__invite.step(1));
   const c = await S();
   const d2 = Math.hypot(c.pos[0] - b.pos[0], c.pos[2] - b.pos[2]);
-  assert.ok(Math.abs(d2 - 3) < 0.2, `trotó ${d2.toFixed(2)} m en 1 s`);
+  assert.ok(Math.abs(d2 - 6) < 0.3, `trotó ${d2.toFixed(2)} m en 1 s`);
   await touch('touchEnd', []);
   await I(() => window.__invite.step(0.5));
   const e = await S();
@@ -119,8 +119,9 @@ test('tocar un objeto abre su mensaje; los paneles se cierran con un toque', asy
   // mapa
   await tapSel('#tbtns [data-a=map]');
   assert.equal((await S()).map, true);
-  await settle(); await tap(195, 422);
+  await settle(); await tap(195, 18); // fuera de la hoja (tocar un lugar del mapa viaja)
   assert.equal((await S()).map, false, 'un toque cierra el mapa');
+  assert.equal((await S()).travelling, false, 'cerrar no viaja');
   // buscador: se cierra tocando afuera de la caja
   await tapSel('#tbtns [data-a=search]');
   assert.equal((await S()).search, true);
@@ -130,9 +131,17 @@ test('tocar un objeto abre su mensaje; los paneles se cierran con un toque', asy
   await tapSel('#tbtns [data-a=search]');
   await page.locator('#search-input').fill('mate galleta');
   await settle(); await tapSel('#results li');
-  assert.equal((await S()).walking, true, 'tocar un resultado empieza la caminata');
-  await tapSel('#tbtns [data-a=close]');
-  assert.equal((await S()).walking, false, 'Cerrar corta la caminata');
+  assert.equal((await S()).travelling, true, 'tocar un resultado empieza el viaje rápido');
+  await page.waitForFunction(() => !window.__invite.state().travelling, null, { timeout: 60000 });
+  assert.equal((await S()).scene, 'cana', 'llega a la sala del mate');
+  // tocar un lugar del mapa también viaja
+  await tapSel('#tbtns [data-a=map]');
+  await settle();
+  const pt = await I(() => window.__invite.mapPoint('fogata'));
+  await tap(pt.x, pt.y);
+  assert.equal((await S()).travelling, true, 'tocar un lugar del mapa viaja');
+  await page.waitForFunction(() => !window.__invite.state().travelling, null, { timeout: 60000 });
+  assert.equal((await S()).scene, 'bosque');
   // invitación
   await I(() => { const X = window.__invite; X.clearCard(); X.dungeonAct('key'); X.step(2); X.teleport({ scene: 'mazmorra', x: 4, z: 4.4, yaw: 0 }); X.step(2.2); X.dungeonAct('card'); X.step(0.1); });
   assert.ok((await S()).invitation, 'la invitación se abre');
@@ -156,16 +165,16 @@ test('en horizontal los controles entran en pantalla y siguen funcionando', asyn
   await touch('touchStart', [[st.cx, st.cy]]);
   await touch('touchMove', [[st.cx, st.cy - 50]]);
   const a = await S();
-  await I(() => window.__invite.step(2));
+  await I(() => window.__invite.step(1));
   const b = await S();
   await touch('touchEnd', []);
   const d = Math.hypot(b.pos[0] - a.pos[0], b.pos[2] - a.pos[2]);
-  assert.ok(Math.abs(d - 2) < 0.12, `caminó ${d.toFixed(2)} m en 2 s`);
+  assert.ok(Math.abs(d - 3) < 0.15, `caminó ${d.toFixed(2)} m en 1 s`);
   await tapSel('#tbtns [data-a=map]');
   assert.equal((await S()).map, true);
   const map = await box('#map .sheet');
   assert.ok(map.y >= 0 && map.y + map.h <= 390, 'el mapa entra en la pantalla horizontal');
-  await settle(); await tap(422, 195);
+  await settle(); await tap(60, 60); // fuera de la hoja
   assert.equal((await S()).map, false);
   await page.setViewportSize({ width: 390, height: 844 });
 });

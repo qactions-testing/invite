@@ -28,6 +28,11 @@ export class GameAudio {
   private melody: { inst: Wind; notes: [number, number, number][] } | null = null; // [compás, corchea, midi]
   private amb = { water: 0, fire: 0, cave: 0 }; private indoor = false;
   private stats = { notes: 0, birdCalls: 0, windNotes: 0, banjoNotes: 0, bars: 0, drumHits: 0, fanfares: 0, sfx: 0 };
+  /** botón de parlante: silencia solo la música (aves, agua, fuego, bombos y trompetas siguen) */
+  musicOn = true;
+  /** ruido compartido (soplo de los vientos) y chasquidos del fuego: se crean una vez, no en cada nota */
+  private breath: AudioBuffer | null = null; private crackles: AudioBuffer[] = [];
+  private fwd = new THREE.Vector3();
   /** 0..1: cercanía a la invitación (bombos de ceremonia) */
   drumLevel = 0;
   private timer = 0;
@@ -84,6 +89,13 @@ export class GameAudio {
     this.fireG = loop([['lowpass', 520, 0.7]], 0);
     this.caveSend = c.createGain(); this.caveSend.gain.value = 0; this.caveSend.connect(this.reverbIn);
 
+    this.breath = c.createBuffer(1, c.sampleRate * 3, c.sampleRate);
+    { const d = this.breath.getChannelData(0), rb = mulberry32(11); for (let i = 0; i < d.length; i++) d[i] = rb() * 2 - 1; }
+    for (let k = 0; k < 8; k++) {
+      const rc = mulberry32(40 + k), n = Math.floor(c.sampleRate * (0.008 + rc() * 0.025)), b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = (rc() * 2 - 1) * (1 - i / n) ** 2;
+      this.crackles.push(b);
+    }
     this.nextBar = c.currentTime + 0.6; this.nextBird = c.currentTime + 1.2;
     this.timer = window.setInterval(() => this.schedule(), 110);
   }
@@ -138,14 +150,14 @@ export class GameAudio {
     const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = Math.min(6000, f * 4);
     o1.connect(lp); o2.connect(h); h.connect(lp); lp.connect(env);
     // soplo
-    const nb = c.createBufferSource(), nbuf = c.createBuffer(1, Math.floor(c.sampleRate * (dur + 0.2)), c.sampleRate), nd = nbuf.getChannelData(0);
-    for (let i = 0; i < nd.length; i++) nd[i] = this.rng() * 2 - 1;
-    nb.buffer = nbuf;
+    const nb = c.createBufferSource();
+    nb.buffer = this.breath; nb.loop = true;
     const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f * (inst === 'siku' ? 1.0 : 2.0); bp.Q.value = inst === 'siku' ? 6 : 2.5;
     const bg = c.createGain(); bg.gain.setValueAtTime(P.breath * (inst === 'siku' ? 2.2 : 1), t); bg.gain.exponentialRampToValueAtTime(Math.max(0.001, P.breath), t + 0.09);
     nb.connect(bp); bp.connect(bg); bg.connect(env);
     env.connect(this.winds);
-    for (const n of [o1, o2, nb]) { n.start(t); n.stop(t + dur + 0.2); }
+    for (const n of [o1, o2]) { n.start(t); n.stop(t + dur + 0.2); }
+    nb.start(t, this.rng() * 2); nb.stop(t + dur + 0.2);
     this.stats.windNotes++;
   }
 
@@ -244,8 +256,7 @@ export class GameAudio {
     while (this.nextBar < horizon) { this.scheduleBar(this.nextBar); this.nextBar += 2; }
     if (this.nextBird < horizon) { this.birdCall(Math.max(now, this.nextBird), this.listenerPos); this.nextBird = Math.max(now, this.nextBird) + (this.indoor || this.amb.cave ? 4 + r() * 5 : 1.1 + r() * 2.6); }
     if (this.amb.fire > 0.05 && this.nextCrackle < horizon) {
-      const t = Math.max(now, this.nextCrackle), src = c.createBufferSource(), n = Math.floor(c.sampleRate * (0.008 + r() * 0.025)), b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0);
-      for (let i = 0; i < n; i++) d[i] = (r() * 2 - 1) * (1 - i / n) ** 2;
+      const t = Math.max(now, this.nextCrackle), src = c.createBufferSource(), b = this.crackles[Math.floor(r() * this.crackles.length)];
       const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 900 + r() * 2500;
       const g = c.createGain(); g.gain.value = (0.1 + r() * 0.3) * this.amb.fire;
       src.buffer = b; src.connect(hp); hp.connect(g); g.connect(this.master); src.start(t);
@@ -318,7 +329,7 @@ export class GameAudio {
     this.amb = amb; this.drumLevel += ((amb.drums ?? 0) - this.drumLevel) * Math.min(1, dt * 2); this.indoor = indoor; this.listenerPos.copy(cam.position);
     const c = this.ctx;
     if (!c) return;
-    const k = Math.min(1, dt * 3), now = c.currentTime, L = c.listener, f = cam.getWorldDirection(new THREE.Vector3());
+    const k = Math.min(1, dt * 3), now = c.currentTime, L = c.listener, f = cam.getWorldDirection(this.fwd);
     if (L.positionX) {
       L.positionX.value = cam.position.x; L.positionY.value = cam.position.y; L.positionZ.value = cam.position.z;
       L.forwardX.value = f.x; L.forwardY.value = f.y; L.forwardZ.value = f.z; L.upX.value = 0; L.upY.value = 1; L.upZ.value = 0;
@@ -329,10 +340,11 @@ export class GameAudio {
     this.windG.gain.value += ((muffled ? 0.012 : 0.045 + 0.02 * Math.sin(now * 0.31)) - this.windG.gain.value) * k;
     this.birdBus.gain.value += ((muffled ? 0.14 : 0.5) - this.birdBus.gain.value) * k;
     this.birdLp.frequency.value += ((muffled ? 1600 : 12000) - this.birdLp.frequency.value) * k;
-    this.music.gain.value += ((this.drumLevel > 0.1 ? 0.17 : indoor ? 0.27 : 0.34) - this.music.gain.value) * k;
+    this.music.gain.value += ((this.musicOn ? (this.drumLevel > 0.1 ? 0.17 : indoor ? 0.27 : 0.34) : 0) - this.music.gain.value) * (this.musicOn ? k : 1);
   }
+  setMusic(on: boolean) { this.musicOn = on; if (!on && this.music) this.music.gain.value = 0; }
 
   state() {
-    return { context: this.ctx?.state ?? 'none', sampleRate: this.ctx?.sampleRate ?? 0, ...this.stats, drumLevel: this.drumLevel, melody: this.melody?.inst ?? null, voices: this.ks.size };
+    return { context: this.ctx?.state ?? 'none', sampleRate: this.ctx?.sampleRate ?? 0, ...this.stats, drumLevel: this.drumLevel, musicOn: this.musicOn, musicGain: this.music?.gain.value ?? 0, birdGain: this.birdBus?.gain.value ?? 0, melody: this.melody?.inst ?? null, voices: this.ks.size };
   }
 }

@@ -76,19 +76,19 @@ async function walk(key, seconds) {
   return { dist: Math.hypot(b.pos[0] - a.pos[0], b.pos[2] - a.pos[2]), a, b };
 }
 
-test('se camina a 1 m/s con WASD y con las flechas', async () => {
+test('se camina a 3 m/s con WASD y con las flechas', async () => {
   for (const [fwd, back] of [['w', 's'], ['ArrowUp', 'ArrowDown']]) {
-    // claro de la fogata: de 4 m a 9 m del fuego, hacia afuera
+    // claro de la fogata: de 4 m a 10 m del fuego, hacia afuera
     await I(() => { const X = window.__invite; X.teleport('fogata', 4, 1.5); X.look(X.state().yaw + Math.PI, 0); });
-    const out = await walk(fwd, 5);
-    assert.ok(Math.abs(out.dist - 5) < 0.25, `${fwd}: ${out.dist.toFixed(2)} m en 5 s`);
-    const ret = await walk(back, 3);
-    assert.ok(Math.abs(ret.dist - 3) < 0.15, `${back}: ${ret.dist.toFixed(2)} m en 3 s`);
+    const out = await walk(fwd, 2);
+    assert.ok(Math.abs(out.dist - 6) < 0.3, `${fwd}: ${out.dist.toFixed(2)} m en 2 s`);
+    const ret = await walk(back, 1);
+    assert.ok(Math.abs(ret.dist - 3) < 0.15, `${back}: ${ret.dist.toFixed(2)} m en 1 s`);
   }
   for (const key of ['a', 'd', 'ArrowLeft', 'ArrowRight']) {
     await I(() => { const X = window.__invite; X.teleport('fogata', 6, 1.5); X.look(X.state().yaw + Math.PI, 0); });
-    const side = await walk(key, 2);
-    assert.ok(Math.abs(side.dist - 2) < 0.12, `${key}: ${side.dist.toFixed(2)} m en 2 s`);
+    const side = await walk(key, 0.7);
+    assert.ok(Math.abs(side.dist - 2.1) < 0.12, `${key}: ${side.dist.toFixed(2)} m en 0.7 s`);
   }
 });
 
@@ -123,7 +123,7 @@ test('M abre y cierra el mapa del bosque', async () => {
   assert.equal((await state()).map, false);
 });
 
-test('Ctrl+F busca entre todos los objetos y camina hasta el elegido (entrando a su sala)', async () => {
+test('Ctrl+F busca entre todos los objetos y viaja al elegido: fundido, barra de carga y llegada a su sala', async () => {
   await I(() => window.__invite.teleport('cana', 13, 2.2)); // en el bosque, a 13 m del árbol gigante
   const t0 = await state();
   assert.equal(t0.scene, 'bosque');
@@ -137,20 +137,51 @@ test('Ctrl+F busca entre todos los objetos y camina hasta el elegido (entrando a
   await page.keyboard.press('Enter');
   let s = await state();
   assert.equal(s.search, false);
-  assert.equal(s.walking, true);
-  for (let i = 0; i < 40 && s.walking; i++) { await step(5, 30); s = await state(); }
-  assert.equal(s.walking, false, 'debería haber llegado');
-  assert.equal(s.scene, 'cana');
-  assert.equal(s.hover, 'mate', 'termina mirando el mate');
-  const elapsed = s.t - t0.t, walked = s.walked - t0.walked;
-  assert.ok(walked > 10, `caminó ${walked.toFixed(1)} m`);
-  assert.ok(walked <= elapsed * 1.0 + 0.2, `nunca supera 1 m/s (${walked.toFixed(1)} m en ${elapsed.toFixed(1)} s)`);
-  // una tecla de movimiento cancela la caminata automática
-  await I(() => window.__invite.walkTo('piedra-ronda'));
-  await step(1);
-  assert.equal((await state()).walking, true);
-  await page.keyboard.down('w'); await step(0.2); await page.keyboard.up('w');
-  assert.equal((await state()).walking, false);
+  assert.equal(s.travelling, true);
+  assert.equal(await I(() => document.getElementById('travel').classList.contains('on')), true, 'pantalla de viaje visible');
+  assert.equal(await page.locator('#travel .t').innerText(), 'Llevándote de aquí para allá...');
+  await page.waitForFunction(() => !window.__invite.state().travelling, null, { timeout: 60000 });
+  assert.equal(await I(() => document.getElementById('travel-bar').firstElementChild.style.width), '100%', 'la barra llega al final');
+  await step(0.1);
+  s = await state();
+  assert.equal(s.scene, 'cana', 'aparece dentro de la sala del objeto');
+  assert.equal(s.hover, 'mate', 'aparece mirando el mate');
+  assert.ok(s.walked - t0.walked < 0.5, 'no camina: viaja');
+  assert.equal(await I(() => document.getElementById('travel').classList.contains('on')), false);
+  // también a un objeto del bosque
+  await I(() => window.__invite.travelTo('piedra-fogon'));
+  await step(0.1);
+  s = await state();
+  assert.equal(s.scene, 'bosque');
+  assert.equal(s.hover, 'piedra-fogon');
+});
+
+test('tocar un lugar del mapa viaja hasta él (natural y sala)', async () => {
+  await I(() => window.__invite.teleport('fogata', 6, 1.5));
+  for (const [id, scene] of [['estanque', 'bosque'], ['abuelas', 'abuelas'], ['campamento', 'bosque']]) {
+    await page.keyboard.press('m');
+    await page.waitForTimeout(450);
+    const pt = await I((i) => window.__invite.mapPoint(i), id);
+    assert.ok(pt, `el lugar ${id} está en el mapa`);
+    await page.mouse.click(pt.x, pt.y);
+    assert.equal((await state()).travelling, true, `click en ${id} inicia el viaje`);
+    await page.waitForFunction(() => !window.__invite.state().travelling, null, { timeout: 60000 });
+    await step(0.1);
+    const s = await state();
+    assert.equal(s.map, false);
+    assert.equal(s.scene, scene, `llega a ${id}`);
+    if (scene === 'bosque') {
+      const p = s.places.find((q) => q.id === id), d = Math.hypot(p.x - s.pos[0], p.z - s.pos[2]);
+      assert.ok(d < 13, `${id}: aparece a ${d.toFixed(1)} m`);
+    }
+  }
+  // click fuera de un lugar: cierra el mapa sin viajar
+  await page.keyboard.press('m');
+  await page.waitForTimeout(450);
+  const box = await page.locator('#map-canvas').boundingBox();
+  await page.mouse.click(box.x + 6, box.y + 6);
+  const s = await state();
+  assert.equal(s.map, false); assert.equal(s.travelling, false);
 });
 
 test('el fuego parpadea, el agua se mueve y las abuelas largan corazones', async () => {

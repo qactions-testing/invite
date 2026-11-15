@@ -464,6 +464,8 @@ function weighted<T>(rng: Rng, list: [T, number, ...any[]][]): number {
 
 export interface FloraOpts { quality: 'low' | 'high'; barks: THREE.Texture[]; sunDir: THREE.Vector3; sunColor: THREE.Color }
 
+/** tamaño de las parcelas (m): [pasto, plantas, árboles]; elegido midiendo triángulos vs. draw calls */
+const CH = [32, 64, 96];
 export class Flora {
   group = new THREE.Group();
   trunks: { x: number; z: number; r: number }[] = [];
@@ -553,13 +555,15 @@ totalEmissiveRadiance += diffuseColor.rgb * uSunCol * (0.03 + 0.5 * back);`);
     for (const [key, list] of Object.entries(inst)) {
       const [name, v] = key.split(':'), tg = gens[name][+v];
       const bark = name === 'pindo' ? 2 : name === 'cardon' ? 1 : SPECIES[name].bark;
-      const wood = new THREE.InstancedMesh(tg.wood, this.woodMats[bark], list.length);
-      const leaf = new THREE.InstancedMesh(tg.leaf, this.leafMat, list.length);
-      list.forEach((e, i) => { wood.setMatrixAt(i, e.m); leaf.setMatrixAt(i, e.m); wood.setColorAt(i, e.c); leaf.setColorAt(i, e.c); });
-      wood.castShadow = leaf.castShadow = true; wood.receiveShadow = true;
-      leaf.customDepthMaterial = this.depthMat;
-      wood.name = `tronco:${key}`; leaf.name = `copa:${key}`;
-      this.group.add(wood, leaf);
+      this.chunked(list, CH[2], 2, (part) => {
+        const wood = new THREE.InstancedMesh(tg.wood, this.woodMats[bark], part.length);
+        const leaf = new THREE.InstancedMesh(tg.leaf, this.leafMat, part.length);
+        part.forEach((e, i) => { wood.setMatrixAt(i, e.m); leaf.setMatrixAt(i, e.m); wood.setColorAt(i, e.c); leaf.setColorAt(i, e.c); });
+        wood.castShadow = leaf.castShadow = true; wood.receiveShadow = true;
+        leaf.customDepthMaterial = this.depthMat;
+        wood.name = `tronco:${key}`; leaf.name = `copa:${key}`;
+        return [wood, leaf];
+      });
     }
 
     // sotobosque
@@ -593,11 +597,14 @@ totalEmissiveRadiance += diffuseColor.rgb * uSunCol * (0.03 + 0.5 * back);`);
     }
     const prng = mulberry32(77);
     for (const [kind, list] of Object.entries(plants)) {
-      const mesh = new THREE.InstancedMesh(genPlant(kind, prng), this.leafMat, list.length);
-      list.forEach((e, i) => { mesh.setMatrixAt(i, e.m); mesh.setColorAt(i, e.c); });
-      mesh.receiveShadow = true; mesh.castShadow = kind !== 'grass' && kind !== 'flower';
-      mesh.customDepthMaterial = this.depthMat; mesh.name = `planta:${kind}`;
-      this.group.add(mesh);
+      const g = genPlant(kind, prng), grass = kind === 'grass';
+      this.chunked(list, grass ? CH[0] : CH[1], grass ? 0 : 1, (part) => {
+        const mesh = new THREE.InstancedMesh(g, this.leafMat, part.length);
+        part.forEach((e, i) => { mesh.setMatrixAt(i, e.m); mesh.setColorAt(i, e.c); });
+        mesh.receiveShadow = true; mesh.castShadow = !grass && kind !== 'flower';
+        mesh.customDepthMaterial = this.depthMat; mesh.name = `planta:${kind}`;
+        return [mesh];
+      });
     }
   }
 
@@ -625,6 +632,44 @@ totalEmissiveRadiance += diffuseColor.rgb * uSunCol * (0.03 + 0.5 * back);`);
     mesh.customDepthMaterial = this.depthMat; mesh.castShadow = true;
     return mesh;
   }
+
+  // ---------------------------------------------------------------- parcelas
+  // Cada especie se parte en parcelas de `cell` m: el motor descarta las que quedan fuera de la vista
+  // (y de la cámara de sombras), y las lejanas —ya tapadas por la niebla— no se dibujan.
+  private chunks: { meshes: THREE.InstancedMesh[]; x: number; z: number; r: number; kind: 0 | 1 | 2 }[] = [];
+  /** distancia máxima de dibujo por tipo: [pasto, plantas, árboles] (m) */
+  ranges: [number, number, number] = [60, 100, 230];
+  private cullT = 0;
+  private chunked(list: { m: THREE.Matrix4; c: THREE.Color }[], cell: number, kind: 0 | 1 | 2, make: (part: { m: THREE.Matrix4; c: THREE.Color }[]) => THREE.InstancedMesh[]) {
+    const cells = new Map<string, { m: THREE.Matrix4; c: THREE.Color }[]>();
+    for (const e of list) {
+      const k = `${Math.floor(e.m.elements[12] / cell)},${Math.floor(e.m.elements[14] / cell)}`;
+      let a = cells.get(k); if (!a) cells.set(k, (a = [])); a.push(e);
+    }
+    for (const part of cells.values()) {
+      const meshes = make(part);
+      for (const m of meshes) { m.computeBoundingSphere(); this.group.add(m); }
+      const bs = meshes[meshes.length - 1].boundingSphere!;
+      this.chunks.push({ meshes, x: bs.center.x, z: bs.center.z, r: bs.radius, kind });
+    }
+  }
+  /** Muestra solo las parcelas a menos de `ranges` del jugador (cada 0.25 s). */
+  cull(cam: THREE.Vector3, force = false) {
+    if (!force && (this.cullT += 1) % 15) return;
+    this.lastCam.copy(cam);
+    for (const c of this.chunks) {
+      const vis = Math.hypot(c.x - cam.x, c.z - cam.z) - c.r < this.ranges[c.kind];
+      if (c.meshes[0].visible !== vis) for (const m of c.meshes) m.visible = vis;
+    }
+  }
+  get chunkCount() { return this.chunks.length; }
+  /** Solo para medir (tests): `true` imita el dibujo anterior, con todo el bosque en cada cuadro. */
+  drawAll(on: boolean) {
+    for (const c of this.chunks) for (const m of c.meshes) { m.visible = true; m.frustumCulled = !on; }
+    if (!on) this.cull(new THREE.Vector3(this.lastCam.x, 0, this.lastCam.z), true);
+  }
+  private lastCam = new THREE.Vector3();
+  get visibleChunks() { return this.chunks.filter((c) => c.meshes[0].visible).length; }
 
   update(t: number) { this.uniforms.uTime.value = t; }
 }

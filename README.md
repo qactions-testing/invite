@@ -33,19 +33,33 @@ ceremonia crecen al acercarse. A las 2 horas la invitación se autodestruye y ha
 
 | Tecla | Acción |
 |---|---|
-| `W` `A` `S` `D` o flechas | caminar (1 m/s) |
-| `Shift` | trotar (3 m/s) |
+| `W` `A` `S` `D` o flechas | caminar (3 m/s) |
+| `Shift` | trotar (6 m/s) |
 | mouse | mirar |
 | `E` | leer el objeto que mirás / entrar o salir / tomar la llave o la invitación |
 | `I` | ver la invitación (cuando la tenés) |
 | `M` | mapa del bosque |
-| `Ctrl` + `F` | buscar entre todos los objetos y caminar hasta el elegido |
+| `Ctrl` + `F` | buscar entre todos los objetos y viajar hasta el elegido |
 
 En celulares y tablets (pantalla táctil como puntero principal) aparecen controles en pantalla, 70 %
 transparentes: joystick a la izquierda para caminar, deslizar el dedo para mirar, pellizcar para hacer
 zoom, tocar un objeto para leerlo/usarlo y botones **Leer, Trotar, Mapa, Buscar, Invitación, Cerrar**.
 Los paneles se cierran con un toque. Funciona en vertical y en horizontal. En la compu no aparecen
 (`?touch=1` los fuerza, `?touch=0` los quita).
+
+**Viaje rápido**: elegir un resultado del buscador o tocar un lugar del mapa funde a negro, muestra una barra
+con "Llevándote de aquí para allá..." y aparece en el destino.
+
+Arriba a la izquierda: botón de parlante (silencia solo la música; aves, agua, fuego, bombos y trompetas
+siguen) y botón de **calidad** (Alta / Media / Baja; por defecto Alta en la compu y Media en el celular;
+se recuerda en el navegador). `?fps=1` muestra los cuadros por segundo.
+
+### Rendimiento
+
+La vegetación está partida en parcelas: se dibujan solo las que están a la vista y cerca (el pasto lejano y
+las plantas que ya cubre la niebla no se dibujan, y las sombras solo usan las parcelas cercanas). El mapa de
+sombras se recalcula cuando hace falta, quedan encendidas solo las luces más cercanas y los shaders de todas
+las escenas se compilan durante la carga.
 
 ## Desarrollo
 

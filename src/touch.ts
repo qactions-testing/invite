@@ -5,9 +5,9 @@ import { Player } from './player';
 
 /** Lo que los controles necesitan del juego. */
 export interface TouchHost {
-  started: boolean; walking: boolean; hasCard: boolean; anyOpen: boolean; hovering: boolean;
+  started: boolean; busy: boolean; hasCard: boolean; anyOpen: boolean; hovering: boolean;
   player: Player; camera: THREE.PerspectiveCamera; canvas: HTMLCanvasElement;
-  interact(): void; toggleMap(): void; openSearch(): void; showCard(): void; closeAll(): void; cancelWalk(): void;
+  interact(): void; toggleMap(): void; openSearch(): void; showCard(): void; closeAll(): void;
 }
 
 /** Pantalla táctil como puntero principal (celular/tablet). `?touch=1|0` lo fuerza. */
@@ -82,7 +82,7 @@ export class TouchControls {
         this.pinchD = d;
         return;
       }
-      if (!this.host.started || this.host.anyOpen || this.host.walking) return;
+      if (!this.host.started || this.host.anyOpen || this.host.busy) return;
       const k = 3.2 * (this.host.camera.fov / FOV.base);
       this.host.player.look(dx * k, dy * k);
     });
@@ -117,9 +117,8 @@ export class TouchControls {
     const d = Math.hypot(dx, dy), max = R * 0.62;
     const kx = d > max ? max / d : 1;
     this.knob.style.transform = `translate(${dx * kx}px, ${dy * kx}px)`;
-    // zona muerta del 22 %; fuera de ella, dirección pura: la velocidad sigue siendo 1 m/s (3 trotando)
+    // zona muerta del 22 %; fuera de ella, dirección pura: la velocidad es fija (3 m/s, 6 trotando)
     if (d < R * 0.22) { this.host.player.stick = [0, 0]; return; }
-    if (this.host.walking) this.host.cancelWalk();
     this.host.player.stick = [dx / d, -dy / d];
   }
 

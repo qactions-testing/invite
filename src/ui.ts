@@ -8,8 +8,11 @@ const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,
 export interface SearchEntry { id: string; label: string; place: string; isPlace: boolean }
 
 export class UI {
-  readerOpen = false; mapOpen = false; searchOpen = false; invitationOpen = false; noticeOpen = false;
+  readerOpen = false; mapOpen = false; searchOpen = false; invitationOpen = false; noticeOpen = false; travelOpen = false;
   onPick: (e: SearchEntry) => void = () => {};
+  /** lugar tocado en el mapa → viaje rápido */
+  onMapPick: (id: string) => void = () => {};
+  private mapHits: MapHit[] = [];
   onClose: () => void = () => {};
   private entries: SearchEntry[] = [];
   private shown: SearchEntry[] = [];
@@ -41,10 +44,45 @@ export class UI {
     tapClose('map', () => this.mapOpen && this.closeMap());
     tapClose('invitation', () => this.invitationOpen && this.closeInvitation());
     tapClose('search', () => this.searchOpen && this.closeSearch(), true);
+    // mapa: tocar un lugar viaja hasta él (y no cierra el mapa por el toque)
+    const cv = $<HTMLCanvasElement>('map-canvas');
+    cv.addEventListener('click', (e) => {
+      const hit = this.mapHit(cv, e.clientX, e.clientY);
+      if (!hit) return;
+      e.stopPropagation();
+      if (performance.now() - this.openedAt < 400) return;
+      this.onMapPick(hit.id);
+    });
+    cv.addEventListener('mousemove', (e) => { cv.style.cursor = this.mapHit(cv, e.clientX, e.clientY) ? 'pointer' : ''; });
+  }
+  private mapHit(cv: HTMLCanvasElement, cx: number, cy: number): MapHit | null {
+    const r = cv.getBoundingClientRect(), x = ((cx - r.left) * cv.width) / r.width, y = ((cy - r.top) * cv.height) / r.height;
+    let best: MapHit | null = null, bd = Infinity;
+    for (const h of this.mapHits) {
+      const inLabel = x >= h.lx - 10 && x <= h.lx + h.lw + 10 && y >= h.ly - 12 && y <= h.ly + h.lh + 8;
+      const d = Math.hypot(x - h.x, y - h.y);
+      if ((inLabel || d < 34) && d < bd) { best = h; bd = d; }
+    }
+    return best;
+  }
+  /** Posición en pantalla de un lugar del mapa abierto (centro de su rombo). */
+  mapPoint(id: string): { x: number; y: number } | null {
+    const cv = $<HTMLCanvasElement>('map-canvas'), h = this.mapHits.find((q) => q.id === id);
+    if (!h || !this.mapOpen) return null;
+    const r = cv.getBoundingClientRect();
+    return { x: r.left + (h.x * r.width) / cv.width, y: r.top + (h.y * r.height) / cv.height };
   }
   private openedAt = 0;
 
-  get anyOpen() { return this.readerOpen || this.mapOpen || this.searchOpen || this.invitationOpen || this.noticeOpen; }
+  get anyOpen() { return this.readerOpen || this.mapOpen || this.searchOpen || this.invitationOpen || this.noticeOpen || this.travelOpen; }
+
+  // ---------------------------------------------------------------- viaje rápido
+  travelStart(dest: string) {
+    $('travel-dest').textContent = dest; this.travelProgress(0);
+    $('travel').classList.add('on'); this.travelOpen = true;
+  }
+  travelProgress(p: number) { ($('travel-bar').firstElementChild as HTMLElement).style.width = `${Math.round(p * 100)}%`; }
+  travelEnd() { $('travel').classList.remove('on'); this.travelOpen = false; }
 
   // ---------------------------------------------------------------- mazmorra e invitación
   private foundTimer = 0;
@@ -108,9 +146,9 @@ export class UI {
   }
   closeReader() { $('reader').classList.remove('open'); this.readerOpen = false; this.onClose(); }
 
-  openMap(draw: (c: CanvasRenderingContext2D, w: number, h: number) => void) {
+  openMap(draw: (c: CanvasRenderingContext2D, w: number, h: number) => MapHit[]) {
     const cv = $<HTMLCanvasElement>('map-canvas');
-    draw(cv.getContext('2d')!, cv.width, cv.height);
+    this.mapHits = draw(cv.getContext('2d')!, cv.width, cv.height);
     $('map').classList.add('open'); this.mapOpen = true; this.openedAt = performance.now();
   }
   closeMap() { $('map').classList.remove('open'); this.mapOpen = false; this.onClose(); }
@@ -144,10 +182,13 @@ export class UI {
   }
 }
 
-export interface MapPlace { name: string; x: number; z: number; kind: string }
+export interface MapPlace { id: string; name: string; x: number; z: number; kind: string }
+/** Zona tocable de un lugar en el mapa (coordenadas del canvas): rombo en (x, y) y rótulo. */
+export interface MapHit { id: string; x: number; y: number; lx: number; ly: number; lw: number; lh: number }
 
-/** Dibuja el mapa del bosque con la forma del Cono Sur. */
-export function drawMap(c: CanvasRenderingContext2D, W: number, H: number, geo: Geo, places: MapPlace[], px: number, pz: number, yaw: number) {
+/** Dibuja el mapa del bosque con la forma del Cono Sur. Devuelve las zonas tocables de cada lugar. */
+export function drawMap(c: CanvasRenderingContext2D, W: number, H: number, geo: Geo, places: MapPlace[], px: number, pz: number, yaw: number): MapHit[] {
+  const hits: MapHit[] = [];
   const b = geo.bounds, pad = 34;
   const s = Math.min((W - pad * 2) / (b.maxX - b.minX), (H - pad * 2) / (b.maxZ - b.minZ));
   const ox = (W - (b.maxX - b.minX) * s) / 2 - b.minX * s, oz = (H - (b.maxZ - b.minZ) * s) / 2 - b.minZ * s;
@@ -201,6 +242,7 @@ export function drawMap(c: CanvasRenderingContext2D, W: number, H: number, geo: 
     const half = c.measureText(p.name).width / 2 + 8, tx = Math.min(W - half, Math.max(half, x));
     c.lineWidth = 6; c.strokeStyle = 'rgba(247,237,214,0.92)';
     c.strokeText(p.name, tx, z - 20); c.fillStyle = '#3a2a1a'; c.fillText(p.name, tx, z - 20);
+    hits.push({ id: p.id, x, y: z, lx: tx - half + 8, ly: z - 42, lw: (half - 8) * 2, lh: 28 });
   }
   // jugador
   c.save(); c.translate(X(px), Z(pz));
@@ -213,5 +255,6 @@ export function drawMap(c: CanvasRenderingContext2D, W: number, H: number, geo: 
   c.fillStyle = '#3a2a1a'; c.font = '600 26px Georgia, serif'; c.textAlign = 'center';
   c.fillText('N', W - 44, 46); c.beginPath(); c.moveTo(W - 44, 54); c.lineTo(W - 35, 80); c.lineTo(W - 53, 80); c.closePath(); c.fill();
   c.strokeStyle = '#3a2a1a'; c.lineWidth = 3; c.beginPath(); c.moveTo(28, H - 30); c.lineTo(28 + 100 * s, H - 30); c.stroke();
-  c.textAlign = 'left'; c.font = '20px Georgia, serif'; c.fillText('100 m = 100 s a pie', 28, H - 42);
+  c.textAlign = 'left'; c.font = '20px Georgia, serif'; c.fillText('100 m ≈ 33 s a pie', 28, H - 42);
+  return hits;
 }

@@ -20,11 +20,23 @@ const TOUCH = isTouchDevice(params);
 if (TOUCH) document.body.classList.add('touch');
 const QUALITY: 'low' | 'high' = params.get('quality') === 'low' ? 'low' : 'high';
 const ROOMS = ['cana', 'abuelas', 'gnomos'];
-/** de qué escena cuelga cada una (la mazmorra está bajo la casita de gnomos) */
-const PARENT: Record<string, string> = { cana: 'bosque', abuelas: 'bosque', gnomos: 'bosque', mazmorra: 'gnomos' };
-const CARD_KEY = 'invite.card.v1';
-// en tests y capturas (autostart) la calidad no se ajusta sola
-const ADAPTIVE = QUALITY === 'high' && !params.has('autostart');
+const CARD_KEY = 'invite.card.v1', QUALITY_KEY = 'invite.quality.v1', MUSIC_KEY = 'invite.music.v1';
+const SHOW_FPS = params.has('fps');
+
+/** Calidad gráfica (botón en pantalla). Distancias de dibujo: [pasto, plantas, árboles] en m. */
+type Level = 'alta' | 'media' | 'baja';
+const LEVELS: Level[] = ['alta', 'media', 'baja'];
+const QSET: Record<Level, { label: string; dpr: number; shadow: number; bloom: boolean; lights: number; ranges: [number, number, number] }> = {
+  alta: { label: 'Alta', dpr: 1.5, shadow: 1024, bloom: true, lights: 3, ranges: [60, 100, 230] },
+  media: { label: 'Media', dpr: 1, shadow: 512, bloom: false, lights: 2, ranges: [45, 75, 165] },
+  baja: { label: 'Baja', dpr: 0.75, shadow: 0, bloom: false, lights: 1, ranges: [30, 55, 135] },
+};
+const store = {
+  get: (k: string) => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } },
+};
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
 
 class Game {
   renderer!: THREE.WebGLRenderer;
@@ -47,17 +59,23 @@ class Game {
   private last = 0; private fadeK = 0;
   private trans: { to: string; from: string; phase: 0 | 1; then?: () => void } | null = null;
   private nearPlace: string | null = null; private placeT = 0;
-  private walkToken = 0; walking = false;
+  /** viaje rápido en curso (buscador o mapa) */
+  travelling = false;
+  level: Level = 'alta';
+  private lightCache = new Map<string, THREE.PointLight[]>();
+  private lightTick = 0; private shadowT = 0; private shadowAt = new THREE.Vector3(1e9, 0, 0);
+  private tmpA = new THREE.Vector3(); private tmpB = new THREE.Vector3();
+  private fps = { n: 0, t: 0, worst: 0 };
   private ray = new THREE.Raycaster();
   private drag = false;
   errors: string[] = [];
 
   async init() {
-    const r = (this.renderer = new THREE.WebGLRenderer({ antialias: QUALITY === 'low', powerPreference: 'high-performance' }));
-    r.setPixelRatio(Math.min(devicePixelRatio, QUALITY === 'low' ? 1 : 2));
+    const r = (this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' }));
     r.setSize(innerWidth, innerHeight);
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.92;
-    r.shadowMap.enabled = QUALITY === 'high'; r.shadowMap.type = THREE.PCFSoftShadowMap;
+    // sombras: el sol no se mueve, así que el mapa de sombras se recalcula solo cuando hace falta (ver update)
+    r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap; r.shadowMap.autoUpdate = false;
     document.getElementById('app')!.append(r.domElement);
 
     this.forest = await ForestScene.create(r, this.lib, QUALITY, (p, t) => this.ui.progress(p, t));
@@ -76,25 +94,28 @@ class Game {
       try { this.scenes[id] = await RoomScene.load(id, this.lib); }
       catch (e) { console.warn(`sala ${id} no disponible`, e); }
     }
-    if (QUALITY === 'high') {
-      const size = r.getDrawingBufferSize(new THREE.Vector2());
-      const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 });
-      this.composer = new EffectComposer(r, rt);
-      this.renderPass = new RenderPass(this.forest.scene, this.camera);
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.3, 0.65, 0.92);
-      this.composer.addPass(this.renderPass); this.composer.addPass(this.bloom); this.composer.addPass(new OutputPass());
-    }
     this.setScene('bosque', null);
+    const saved = store.get(QUALITY_KEY) as Level | null;
+    this.applyQuality(QUALITY === 'low' ? 'baja' : saved && LEVELS.includes(saved) ? saved : TOUCH ? 'media' : 'alta', false);
+    this.audio.setMusic(store.get(MUSIC_KEY) !== '0');
+    // shaders de todas las escenas compilados de antemano: entrar a una sala o a la mazmorra no traba
+    this.ui.progress(0.97, 'Preparando la luz del bosque…');
+    for (const sc of Object.values(this.scenes)) {
+      this.manageLights(sc, true);
+      try { await r.compileAsync(sc.scene, this.camera); } catch { /* se compila al dibujar */ }
+    }
+    this.manageLights(this.current, true);
     this.bind();
     this.ui.progress(1, 'Listo');
     this.ui.showStart();
-    this.ui.onPick = (e) => this.walkTo(e.id);
+    this.ui.onPick = (e) => { void this.travelTo(e.id); };
+    this.ui.onMapPick = (id) => { void this.travelTo(id); };
     this.ui.onClose = () => {
       this.player.enabled = this.started && !this.ui.anyOpen;
       // leer la trampilla es "la señal": al cerrar el mensaje, el candado cede
       if (this.trapPending && !this.ui.readerOpen) {
         this.trapPending = false;
-        if (this.dungeon) { this.trapOpen = true; this.audio.sfx('lock'); this.ui.toast('La trampilla se abrió', TOUCH ? 'tocala para bajar a la mazmorra' : 'E para bajar a la mazmorra'); }
+        if (this.dungeon) { this.trapOpen = true; this.audio.sfx('lock'); this.ui.toast('La trampilla se abrió', TOUCH ? 'Tocala para bajar a la mazmorra' : 'E para bajar a la mazmorra'); }
       }
     };
     document.getElementById('inv-card')!.addEventListener('click', () => this.showCard());
@@ -122,9 +143,12 @@ class Game {
     addEventListener('resize', () => {
       this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix();
       this.renderer.setSize(innerWidth, innerHeight);
-      const s = this.renderer.getDrawingBufferSize(new THREE.Vector2());
-      this.composer?.setSize(innerWidth, innerHeight); this.bloom?.resolution.set(s.x / 2, s.y / 2);
+      this.composer?.setSize(innerWidth, innerHeight); this.sizeBloom();
     });
+    const music = document.getElementById('btn-music')!, quality = document.getElementById('btn-quality')!;
+    music.addEventListener('click', () => { this.toggleMusic(); music.blur(); });
+    quality.addEventListener('click', () => { this.applyQuality(LEVELS[(LEVELS.indexOf(this.level) + 1) % LEVELS.length]); quality.blur(); });
+    this.paintMusic();
     addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.code === 'KeyF') {
         e.preventDefault();
@@ -140,7 +164,6 @@ class Game {
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { this.player.keys.add(e.code); return; }
       if (isMoveKey(e.code)) {
         e.preventDefault();
-        if (this.walking) this.cancelWalk();
         this.player.keys.add(e.code);
       }
     });
@@ -149,17 +172,17 @@ class Game {
     cv.addEventListener('mousedown', () => { this.drag = true; if (this.started && !this.ui.anyOpen && this.hover?.click) this.interact(); if (this.started && !this.ui.anyOpen && document.pointerLockElement !== cv) this.lock(); });
     addEventListener('mouseup', () => { this.drag = false; });
     addEventListener('mousemove', (e) => {
-      if (!this.started || this.ui.anyOpen || this.walking) return;
+      if (!this.started || this.ui.anyOpen || this.travelling) return;
       if (document.pointerLockElement === cv || this.drag) this.player.look(e.movementX, e.movementY);
     });
     if (TOUCH) {
       const g = this;
       this.touch = new TouchControls({
-        get started() { return g.started; }, get walking() { return g.walking; }, get hasCard() { return !!g.card; },
+        get started() { return g.started; }, get busy() { return g.travelling; }, get hasCard() { return !!g.card; },
         get anyOpen() { return g.ui.anyOpen; }, get hovering() { return !!g.hover; },
         player: this.player, camera: this.camera, canvas: cv,
         interact: () => this.interact(), toggleMap: () => this.toggleMap(), openSearch: () => this.openSearch(),
-        showCard: () => this.showCard(), closeAll: () => this.closeAll(), cancelWalk: () => this.cancelWalk(),
+        showCard: () => this.showCard(), closeAll: () => this.closeAll(),
       });
     }
   }
@@ -175,8 +198,69 @@ class Game {
     this.ui.readerOpen && this.ui.closeReader(); this.ui.mapOpen && this.ui.closeMap(); this.ui.searchOpen && this.ui.closeSearch();
     this.ui.invitationOpen && this.ui.closeInvitation(); this.ui.noticeOpen && this.ui.closeNotice();
   }
-  /** botón Cerrar (táctil): cierra paneles y corta la caminata automática */
-  closeAll() { this.closePanels(); if (this.walking) this.cancelWalk(); }
+  /** botón Cerrar (táctil) */
+  closeAll() { this.closePanels(); }
+
+  // ---------------------------------------------------------------- calidad gráfica y música
+  /** Aplica un nivel de calidad en caliente (sin recargar) y lo recuerda. */
+  applyQuality(level: Level, save = true) {
+    const q = QSET[level], r = this.renderer;
+    this.level = level;
+    r.setPixelRatio(Math.min(devicePixelRatio, q.dpr));
+    r.setSize(innerWidth, innerHeight);
+    const sun = this.forest.atmo.light;
+    sun.castShadow = q.shadow > 0;
+    if (q.shadow && sun.shadow.mapSize.x !== q.shadow) { sun.shadow.mapSize.set(q.shadow, q.shadow); sun.shadow.map?.dispose(); (sun.shadow as any).map = null; }
+    r.shadowMap.needsUpdate = true;
+    if (q.bloom) this.ensurePost(); else if (this.composer) { this.composer.dispose(); this.composer = null; this.renderPass = null; this.bloom = null; }
+    this.forest.flora.ranges = q.ranges;
+    this.forest.flora.cull(this.player.pos, true);
+    this.lightCache.forEach((_, id) => this.manageLights(this.scenes[id], true));
+    const b = document.getElementById('btn-quality');
+    if (b) b.textContent = `Calidad: ${q.label}`;
+    if (save) store.set(QUALITY_KEY, level);
+  }
+  private ensurePost() {
+    if (this.composer) return;
+    const r = this.renderer, size = r.getDrawingBufferSize(new THREE.Vector2());
+    const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 });
+    this.composer = new EffectComposer(r, rt);
+    this.renderPass = new RenderPass(this.current.scene, this.camera);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 4, size.y / 4), 0.3, 0.65, 0.92);
+    // un píxel inválido (NaN/inf) en la escena se expandiría con el desenfoque del bloom como un pantallazo negro
+    const hp = (this.bloom as any).materialHighPassFilter as THREE.ShaderMaterial;
+    hp.fragmentShader = hp.fragmentShader.replace('gl_FragColor = mix( outputColor, texel, alpha );',
+      'gl_FragColor = mix( outputColor, texel, alpha );\n\t\t\tif ( any( isnan( gl_FragColor ) ) || any( isinf( gl_FragColor ) ) ) gl_FragColor = vec4( 0.0 );');
+    hp.needsUpdate = true;
+    this.composer.addPass(this.renderPass); this.composer.addPass(this.bloom); this.composer.addPass(new OutputPass());
+    this.bloom.strength = this.current.indoor ? 0.42 : 0.3;
+  }
+  private sizeBloom() {
+    if (!this.bloom) return;
+    const s = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    this.bloom.resolution.set(s.x / 4, s.y / 4);
+  }
+  /** Deja encendidas solo las luces puntuales más cercanas; la cantidad encendida es fija para no recompilar shaders. */
+  private manageLights(sc: GameScene, force = false) {
+    if (!force && (this.lightTick += 1) % 15) return;
+    let ls = this.lightCache.get(sc.id);
+    if (!ls) { ls = []; sc.scene.traverse((o) => { if ((o as THREE.PointLight).isPointLight) ls!.push(o as THREE.PointLight); }); this.lightCache.set(sc.id, ls); }
+    // la mazmorra es chica y vive de sus antorchas: ahí se encienden dos más
+    const n = QSET[this.level].lights + (sc.id === 'mazmorra' ? 2 : 0);
+    if (ls.length <= n) { for (const l of ls) l.visible = true; return; }
+    // las más cercanas a lo que se está mirando (3 m por delante de la cámara), no a los pies
+    const focus = this.camera.getWorldDirection(this.tmpB).multiplyScalar(3).add(this.camera.position);
+    const d = ls.map((l) => [l.getWorldPosition(this.tmpA).distanceToSquared(focus), l] as const).sort((a, b) => a[0] - b[0]);
+    d.forEach(([, l], i) => { l.visible = i < n; });
+  }
+  toggleMusic() { this.audio.setMusic(!this.audio.musicOn); store.set(MUSIC_KEY, this.audio.musicOn ? '1' : '0'); this.paintMusic(); }
+  private paintMusic() {
+    const b = document.getElementById('btn-music');
+    if (!b) return;
+    const on = this.audio.musicOn;
+    b.classList.toggle('muted', !on);
+    b.setAttribute('aria-label', on ? 'Silenciar la música' : 'Activar la música'); b.title = on ? 'Silenciar la música' : 'Activar la música';
+  }
 
   // ---------------------------------------------------------------- escenas
   setScene(id: string, from: string | null) {
@@ -201,7 +285,7 @@ class Game {
   private pick() {
     this.hover = null;
     if (this.started && !this.ui.anyOpen && !this.trans) {
-      const list = this.current.interactables, dir = this.camera.getWorldDirection(new THREE.Vector3());
+      const list = this.current.interactables, dir = this.camera.getWorldDirection(this.tmpB);
       this.ray.set(this.camera.position, dir); this.ray.far = 3.4;
       const hit = this.ray.intersectObjects(list.map((i) => i.object), true)[0];
       if (hit) {
@@ -212,7 +296,7 @@ class Game {
       if (!this.hover) {
         let best = 0.19;
         for (const i of list) {
-          const v = i.pos.clone().sub(this.camera.position), d = v.length();
+          const v = this.tmpA.subVectors(i.pos, this.camera.position), d = v.length();
           if (d > 3.3) continue;
           const a = Math.acos(THREE.MathUtils.clamp(v.dot(dir) / d, -1, 1));
           if (a < best) { best = a; this.hover = i; }
@@ -261,7 +345,7 @@ class Game {
   }
   showCard() {
     if (!this.card || !this.started || this.ui.anyOpen) return;
-    this.cancelWalk(); this.player.enabled = false; this.player.keys.clear();
+    this.player.enabled = false; this.player.keys.clear();
     document.exitPointerLock?.();
     this.ui.inventory(false, this.cardLeft);
     this.ui.openInvitation();
@@ -283,63 +367,99 @@ class Game {
     // dentro de una sala, el marcador queda en su puerta
     const door = this.current.indoor ? f.doors[this.current.id] : null;
     const px = door ? door.pos.x : this.player.pos.x, pz = door ? door.pos.z : this.player.pos.z;
-    this.ui.openMap((c, w, h) => drawMap(c, w, h, f.geo, PLACES.map((p) => ({ name: p.name, kind: p.kind, ...f.placePos[p.id] })), px, pz, this.player.yaw));
+    this.ui.openMap((c, w, h) => drawMap(c, w, h, f.geo, PLACES.map((p) => ({ id: p.id, name: p.name, kind: p.kind, ...f.placePos[p.id] })), px, pz, this.player.yaw));
   }
 
-  // ---------------------------------------------------------------- caminar hasta un objeto (Ctrl+F)
+  // ---------------------------------------------------------------- viaje rápido (buscador y mapa)
   findInteractable(id: string): { scene: string; it: Interactable } | null {
     for (const [sid, sc] of Object.entries(this.scenes)) { const it = sc.interactables.find((i) => i.id === id); if (it) return { scene: sid, it }; }
     return null;
   }
-  private forestPath(to: THREE.Vector3): THREE.Vector3[] {
-    const p = this.player.pos, cells = this.forest.nav.find(p.x, p.z, to.x, to.z);
-    const pts = (cells ?? []).slice(1).map(([x, z]) => new THREE.Vector3(x, 0, z));
-    pts.push(to.clone());
-    return pts;
-  }
-  private pathTo(to: THREE.Vector3): THREE.Vector3[] {
-    if (!this.current.indoor) return this.forestPath(to);
-    return this.current.route ? this.current.route(this.player.pos, to) : [to.clone()];
-  }
-  cancelWalk() { this.walkToken++; this.walking = false; this.player.cancelAuto(); this.ui.walkHint(null); }
-  walkTo(id: string): boolean {
-    let scene: string, pos: THREE.Vector3 | null, stop = 1.5, label: string;
-    const place = PLACES.find((p) => p.id === id);
-    if (place) {
-      label = place.name;
-      if (place.kind === 'natural') { const q = this.forest.placePos[id]; scene = 'bosque'; pos = new THREE.Vector3(q.x, this.forest.groundY(q.x, q.z) + 1, q.z); stop = id === 'estanque' ? 10.5 : 4; }
-      else { scene = id; pos = null; }
-    } else {
-      const f = this.findInteractable(id);
-      if (!f) return false;
-      scene = f.scene; pos = f.it.pos; label = f.it.name;
+  /** Un punto pisable a `dist` m de (cx, cz), probando alrededor; el primero intenta desde `prefer` (radianes). */
+  private standNear(cx: number, cz: number, dist: number, prefer: number): THREE.Vector3 {
+    const f = this.forest, p = new THREE.Vector3();
+    for (let k = 0; k < 24; k++) {
+      const a = prefer + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 12);
+      p.set(cx + Math.cos(a) * dist, 0, cz + Math.sin(a) * dist);
+      if (!f.nav.walkable(p.x, p.z)) continue;
+      const before = p.clone();
+      f.collide(p, this.player.radius);
+      if (p.distanceTo(before) < 0.05) return p;
     }
-    if (!this.scenes[scene]) { this.ui.toast('Todavía cerrado', 'esta sala se abre pronto'); return false; }
-    this.cancelWalk();
-    const token = ++this.walkToken;
-    this.walking = true; this.player.keys.clear();
-    this.ui.walkHint(`Caminando hacia ${label}… (${TOUCH ? 'el joystick o Cerrar cancelan' : 'una tecla de movimiento cancela'})`);
-    const done = () => { if (token !== this.walkToken) return; this.walking = false; this.ui.walkHint(null); this.ui.toast(label); };
-    const next = () => {
-      if (token !== this.walkToken) return;
-      const cur = this.current.id;
-      if (cur !== scene) {
-        // siguiente escena del recorrido: se baja hacia el destino o se sale hacia la escena madre
-        const chain: string[] = [];
-        for (let q: string | undefined = scene; q; q = PARENT[q]) chain.push(q);
-        const k = chain.indexOf(cur), hop = k > 0 ? chain[k - 1] : PARENT[cur];
-        let door: Interactable | undefined, at: THREE.Vector3 | undefined;
-        if (cur === 'bosque') { door = this.forest.interactables.find((i) => i.id === `puerta-${hop}`); at = this.forest.doors[hop]?.pos; }
-        else if (k > 0) { door = this.current.interactables.find((i) => i.id === 'trampilla'); at = door?.pos; this.trapOpen = true; }
-        else { door = this.current.interactables.find((i) => i.action === 'door' && i.target === hop); at = door?.pos; }
-        if (!door || !at || !this.scenes[hop]) { done(); return; }
-        this.player.walkPath(this.pathTo(at), door.pos, () => token === this.walkToken && this.go(hop, next), cur === 'bosque' ? 0.5 : 1.4);
-        return;
-      }
-      if (!pos) { done(); return; }
-      this.player.walkPath(this.pathTo(pos), pos, done, stop);
+    p.set(cx + Math.cos(prefer) * dist, 0, cz + Math.sin(prefer) * dist);
+    f.collide(p, this.player.radius);
+    return p;
+  }
+  /** Ubica al jugador en el destino (lugar u objeto), mirándolo. */
+  private placeAt(id: string): string | null {
+    const f = this.forest, place = PLACES.find((p) => p.id === id);
+    const face = (x: number, y: number, z: number) => {
+      const e = this.player.pos, dx = x - e.x, dz = z - e.z, dy = y - (e.y + this.player.eye);
+      this.player.yaw = Math.atan2(-dx, -dz); this.player.pitch = THREE.MathUtils.clamp(Math.atan2(dy, Math.hypot(dx, dz)), -1.1, 1.1);
     };
-    next();
+    const fromSpawn = (x: number, z: number) => Math.atan2(f.spawn.pos.z - z, f.spawn.pos.x - x);
+    if (place) {
+      if (place.kind === 'sala' && this.scenes[place.id]) { this.setScene(place.id, 'bosque'); return place.name; }
+      const q = f.placePos[id];
+      if (this.current.id !== 'bosque') this.setScene('bosque', null);
+      const p = this.standNear(q.x, q.z, id === 'estanque' ? 11 : 6, fromSpawn(q.x, q.z));
+      this.player.pos.set(p.x, f.groundY(p.x, p.z), p.z);
+      face(q.x, this.player.pos.y + this.player.eye - 0.4, q.z);
+      return place.name;
+    }
+    const fi = this.findInteractable(id);
+    if (!fi || !this.scenes[fi.scene]) return null;
+    const o = fi.it.pos;
+    if (fi.scene === 'bosque') {
+      if (this.current.id !== 'bosque') this.setScene('bosque', null);
+      const p = this.standNear(o.x, o.z, 1.8, fromSpawn(o.x, o.z));
+      this.player.pos.set(p.x, f.groundY(p.x, p.z), p.z);
+    } else {
+      this.setScene(fi.scene, 'bosque');
+      const sc = this.current, e = this.player.pos, dx = e.x - o.x, dz = e.z - o.z, l = Math.hypot(dx, dz) || 1;
+      const k = Math.min(1.5, l);
+      e.set(o.x + (dx / l) * k, 0, o.z + (dz / l) * k);
+      sc.collide(e, this.player.radius);
+      e.y = sc.groundY(e.x, e.z);
+    }
+    face(o.x, o.y, o.z);
+    return fi.it.name;
+  }
+  /** Fundido a negro, barra de carga "Llevándote de aquí para allá...", carga del destino y aparición allí. */
+  async travelTo(id: string): Promise<boolean> {
+    if (this.travelling || !this.started || this.trans) return false;
+    const place = PLACES.find((p) => p.id === id), fi = place ? null : this.findInteractable(id);
+    if (!place && !fi) return false;
+    if (fi && !this.scenes[fi.scene]) { this.ui.toast('Todavía cerrado', 'esta sala se abre pronto'); return false; }
+    this.travelling = true;
+    const t0 = performance.now();
+    this.ui.travelStart(place ? place.name : fi!.it.name);
+    this.closePanels();
+    document.exitPointerLock?.(); this.player.keys.clear(); this.player.stick = [0, 0]; this.player.enabled = false;
+    try {
+      await sleep(380); // fundido a negro
+      this.ui.travelProgress(0.25);
+      this.trans = null; this.fadeK = 0;
+      const label = this.placeAt(id) ?? '';
+      this.ui.travelProgress(0.5);
+      this.forest.flora.cull(this.player.pos, true);
+      this.manageLights(this.current, true);
+      this.renderer.shadowMap.needsUpdate = true;
+      try { await this.renderer.compileAsync(this.current.scene, this.camera); } catch { /* se compila al dibujar */ }
+      this.ui.travelProgress(0.8);
+      this.update(1 / 60); this.render(); await nextFrame(); this.render();
+      this.ui.travelProgress(1);
+      await sleep(Math.max(150, 1200 - (performance.now() - t0)));
+      this.ui.travelEnd();
+      const where = place ? place.idea : PLACES.find((p) => p.id === fi!.it.placeId)?.name ?? '';
+      this.ui.toast(label, where);
+      this.nearPlace = place && place.kind === 'natural' ? place.id : this.nearPlace;
+    } finally {
+      this.travelling = false;
+      if (this.ui.travelOpen) this.ui.travelEnd();
+      this.player.enabled = this.started && !this.ui.anyOpen;
+      this.syncPanels();
+    }
     return true;
   }
 
@@ -371,28 +491,34 @@ class Game {
     }
     this.audio.update(dt, this.camera, this.current.ambience?.(this.camera.position) ?? { water: 0, fire: 0, cave: 0 }, this.current.indoor);
     this.ui.fade(this.fadeK);
+    this.manageLights(this.current);
+    // sombras: el mapa se recalcula cuando el sol se reubica (el jugador avanzó) y 5 veces por segundo por el viento en las hojas
+    this.shadowT += dt;
+    const sun = this.forest.atmo.light;
+    if (this.current === this.forest && sun.castShadow && (this.shadowT > 0.2 || sun.position.distanceToSquared(this.shadowAt) > 0.01)) {
+      this.renderer.shadowMap.needsUpdate = true; this.shadowT = 0; this.shadowAt.copy(sun.position);
+    }
+    this.syncPanels();
+  }
+  /** Con un panel abierto se ocultan los botones de esquina y los controles táctiles (salvo Cerrar). */
+  private syncPanels() {
+    const panel = this.ui.anyOpen;
+    if (document.body.classList.contains('panel') !== panel) document.body.classList.toggle('panel', panel);
     this.touch?.update();
   }
   render() { if (this.composer) this.composer.render(); else this.renderer.render(this.current.scene, this.camera); }
   private frame = (now: number) => {
     requestAnimationFrame(this.frame);
-    const dt = Math.min(0.05, (now - this.last) / 1000);
+    const raw = (now - this.last) / 1000, dt = Math.min(0.05, raw);
     this.last = now;
     if (this.manual) return;
     this.update(dt); this.render();
-    // calidad adaptativa: si el equipo no llega a ~24 fps, baja resolución y luego sombras/bloom
-    if (ADAPTIVE && this.started && this.perf.level < 2) {
-      const p = this.perf;
-      p.ema = p.n ? p.ema * 0.95 + dt * 0.05 : dt;
-      if (++p.n > 150 && p.ema > 0.042) { p.level++; p.n = 0; this.degrade(p.level); }
+    if (SHOW_FPS) {
+      const f = this.fps;
+      f.n++; f.t += raw; f.worst = Math.max(f.worst, raw);
+      if (f.t >= 0.5) { document.getElementById('fps')!.textContent = `${Math.round(f.n / f.t)} fps · peor ${Math.round(f.worst * 1000)} ms`; f.n = 0; f.t = 0; f.worst = 0; }
     }
   };
-  private perf = { ema: 0, n: 0, level: 0 };
-  private degrade(level: number) {
-    if (level === 1) { this.renderer.setPixelRatio(1); this.composer?.setPixelRatio(1); }
-    else { this.forest.atmo.light.castShadow = false; this.composer = null; }
-    console.info(`[invite] calidad reducida (nivel ${level}) para sostener la fluidez`);
-  }
 
   // ---------------------------------------------------------------- ganchos de test
   debug() {
@@ -414,7 +540,7 @@ class Game {
       /** lleva al jugador a un lugar (o a x/z), a `dist` metros mirando hacia su centro */
       teleport: (target: string | { x: number; z: number; yaw?: number; scene?: string }, distArg?: number, angle?: number) => {
         const dist = distArg ?? 6;
-        g.cancelWalk(); g.trans = null; g.fadeK = 0;
+        g.trans = null; g.fadeK = 0;
         if (typeof target !== 'string') {
           if (target.scene && target.scene !== g.current.id) g.setScene(target.scene, null);
           g.player.pos.set(target.x, g.current.groundY(target.x, target.z), target.z); g.player.yaw = target.yaw ?? g.player.yaw; g.player.pitch = 0;
@@ -430,7 +556,30 @@ class Game {
         return true;
       },
       interact: () => g.interact(),
-      walkTo: (id: string) => g.walkTo(id),
+      travelTo: (id: string) => g.travelTo(id),
+      /** solo tests: recorre a pie la ruta interna de la escena hasta un objeto (prueba que los cuartos conectan) */
+      walkRoute: (id: string) => {
+        const it = g.current.interactables.find((i) => i.id === id);
+        if (!it || !g.current.route) return false;
+        g.player.walkPath(g.current.route(g.player.pos, it.pos), it.pos, null, 1.4);
+        return true;
+      },
+      setQuality: (l: Level) => g.applyQuality(l),
+      /** Lo que cuesta dibujar un cuadro (vista + sombras). `old`: como antes de las parcelas. */
+      renderCost: (old: boolean | 'sin-flora' = false) => {
+        if (old === 'sin-flora') f.flora.group.visible = false;
+        else if (old) f.flora.drawAll(true);
+        const r = g.renderer; r.shadowMap.needsUpdate = true;
+        r.info.reset(); r.info.autoReset = false;
+        r.render(g.current.scene, g.camera);
+        const out = { calls: r.info.render.calls, triangles: r.info.render.triangles };
+        r.info.autoReset = true;
+        if (old === 'sin-flora') f.flora.group.visible = true;
+        else if (old) f.flora.drawAll(false);
+        return out;
+      },
+      /** coordenadas en pantalla de un lugar del mapa abierto (para tests) */
+      mapPoint: (id: string) => g.ui.mapPoint(id),
       posOf: (id: string) => g.findInteractable(id)?.it.pos.toArray() ?? null,
       /** atajos de prueba: tomar la llave o la invitación sin apuntarles */
       dungeonAct: (a: 'key' | 'card') => (a === 'key' ? g.dungeon?.takeKey() : g.dungeon?.takeCard()),
@@ -442,7 +591,7 @@ class Game {
         const room = g.current instanceof RoomScene ? g.current : null;
         return {
           started: g.started, scene: g.current.id, pos: g.player.pos.toArray(), yaw: g.player.yaw, pitch: g.player.pitch, walked: g.player.walked,
-          walking: g.walking, transition: !!g.trans, hover: g.hover?.id ?? null, t: g.t,
+          travelling: g.travelling, autoWalk: g.player.auto, transition: !!g.trans, hover: g.hover?.id ?? null, t: g.t,
           reader: g.ui.readerOpen ? { title: document.getElementById('reader-title')!.textContent, text: document.getElementById('reader-text')!.textContent } : null,
           map: g.ui.mapOpen, search: g.ui.searchOpen,
           world: {
@@ -461,6 +610,9 @@ class Game {
           notice: g.ui.noticeOpen ? document.getElementById('notice-text')!.textContent : null,
           found: document.getElementById('found')!.classList.contains('open') ? document.getElementById('found-title')!.textContent : null,
           speed: g.player.speed, run: g.player.run, fov: g.camera.fov, touch: !!g.touch,
+          quality: g.level, shadows: g.forest.atmo.light.castShadow, bloom: !!g.composer, pixelRatio: g.renderer.getPixelRatio(),
+          chunks: { total: f.flora.chunkCount, visible: f.flora.visibleChunks },
+          lights: [...g.lightCache.get(g.current.id) ?? []].filter((l) => l.visible).length,
           audio: g.audio.state(), errors: g.errors,
         };
       },

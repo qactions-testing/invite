@@ -14,8 +14,8 @@ export class Player {
   pos = new THREE.Vector3();
   yaw = 0; pitch = 0;
   readonly eye = 1.62; readonly radius = 0.36;
-  /** caminar: 1 m/s · trotar (Shift): 3 m/s */
-  readonly walkSpeed = 1.0; readonly runSpeed = 3.0;
+  /** caminar: 3 m/s · trotar (Shift o botón Trotar): 6 m/s */
+  readonly walkSpeed = 3.0; readonly runSpeed = 6.0;
   get speed() { return this.run || this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? this.runSpeed : this.walkSpeed; }
   keys = new Set<string>();
   /** joystick táctil: dirección unitaria [derecha, adelante] o [0, 0] */
@@ -124,6 +124,11 @@ export class Nav {
       const hgt = heightAt(x, z), slope = Math.hypot(heightAt(x + 1, z) - heightAt(x - 1, z), heightAt(x, z + 1) - heightAt(x, z - 1)) / 2;
       this.cost[c] = 1 + slope * 2.2 + (geo.sample(geo.riverSd, x, z) < 0.2 ? 2.2 : 0) + (hgt > 8 ? 2 : 0);
     }
+  }
+  /** ¿Se puede pararse en (x, z)? (tierra firme, sin troncos ni agua) */
+  walkable(x: number, z: number) {
+    const i = Math.floor((x - this.x0) / this.cell), j = Math.floor((z - this.z0) / this.cell);
+    return i >= 0 && j >= 0 && i < this.w && j < this.h && this.walk[j * this.w + i] === 1;
   }
   private ci(x: number) { return Math.min(this.w - 1, Math.max(0, Math.floor((x - this.x0) / this.cell))); }
   private cj(z: number) { return Math.min(this.h - 1, Math.max(0, Math.floor((z - this.z0) / this.cell))); }

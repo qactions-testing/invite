@@ -615,7 +615,7 @@ void main() {
   }
 
   update(dt: number, t: number, cam: THREE.PerspectiveCamera, viewH: number) {
-    this.water.update(t); this.flora.update(t);
+    this.water.update(t); this.flora.update(t); this.flora.cull(cam.position);
     this.atmo.update(dt, t, cam, viewH);
     for (const u of this.updaters) u(dt, t, cam.position);
     this.sparkles.forEach((s, i) => { s.scale.setScalar(0.3 + 0.1 * Math.sin(t * 2.4 + i * 1.7)); s.material.rotation = t * 0.4 + i; });

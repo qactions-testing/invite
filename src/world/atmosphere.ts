@@ -61,13 +61,12 @@ void main() {
 
     this.light = new THREE.DirectionalLight(this.sunColor, 3.6);
     this.light.name = 'sol';
-    if (quality === 'high') {
-      this.light.castShadow = true;
-      this.light.shadow.mapSize.set(2048, 2048);
-      const c = this.light.shadow.camera;
-      c.left = c.bottom = -46; c.right = c.top = 46; c.near = 1; c.far = 320;
-      this.light.shadow.bias = -0.0004; this.light.shadow.normalBias = 0.06;
-    }
+    // sombras configuradas siempre; se encienden y apagan según la calidad elegida (botón en pantalla)
+    this.light.castShadow = quality === 'high';
+    this.light.shadow.mapSize.set(1024, 1024);
+    const c = this.light.shadow.camera;
+    c.left = c.bottom = -46; c.right = c.top = 46; c.near = 1; c.far = 320;
+    this.light.shadow.bias = -0.0004; this.light.shadow.normalBias = 0.06;
     scene.add(this.light, this.light.target);
     scene.add(new THREE.HemisphereLight(0x86a6e0, 0x5a4a30, 0.14));
 
